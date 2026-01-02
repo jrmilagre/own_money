@@ -13,3 +13,10 @@ class AccountAdmin(admin.ModelAdmin):
     search_fields = ('name', 'institution', 'number', 'abbreviation')
     list_filter = ('account_type', 'is_favorite', 'is_closed')
     ordering = ('name',)
+
+
+@admin.register(Beneficiary)
+class BeneficiaryAdmin(admin.ModelAdmin):
+    list_display = ('full_name', 'created_at', 'updated_at')
+    search_fields = ('full_name',)
+    ordering = ('full_name',)

@@ -40,3 +40,14 @@ class Account(BaseModel):
 
     def __str__(self):
         return self.name
+
+
+class Beneficiary(BaseModel):
+    full_name = models.CharField('Nome completo', max_length=200)
+
+    class Meta:
+        verbose_name = 'Beneficiário'
+        verbose_name_plural = 'Beneficiários'
+
+    def __str__(self):
+        return self.full_name
