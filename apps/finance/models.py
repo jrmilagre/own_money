@@ -51,3 +51,27 @@ class Beneficiary(BaseModel):
 
     def __str__(self):
         return self.full_name
+
+
+class Category(BaseModel):
+    TRANSACTION_TYPE_CHOICES = [
+        ('CR', 'Crédito'),
+        ('DB', 'Débito'),
+    ]
+
+    category = models.CharField('Categoria', max_length=200)
+    subcategory = models.CharField('Subcategoria', max_length=200)
+    default_transaction_type = models.CharField(
+        'Tipo de transação padrão',
+        max_length=2,
+        choices=TRANSACTION_TYPE_CHOICES,
+        default='DB',
+    )
+
+    class Meta:
+        verbose_name = 'Categoria'
+        verbose_name_plural = 'Categorias'
+        ordering = ('category', 'subcategory')
+
+    def __str__(self):
+        return f"{self.category} - {self.subcategory}"

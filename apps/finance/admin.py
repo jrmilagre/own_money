@@ -20,3 +20,17 @@ class BeneficiaryAdmin(admin.ModelAdmin):
     list_display = ('full_name', 'created_at', 'updated_at')
     search_fields = ('full_name',)
     ordering = ('full_name',)
+
+
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = (
+        'category',
+        'subcategory',
+        'default_transaction_type',
+        'created_at',
+        'updated_at',
+    )
+    search_fields = ('category', 'subcategory')
+    list_filter = ('default_transaction_type', 'created_at')
+    ordering = ('category', 'subcategory')
