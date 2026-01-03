@@ -75,3 +75,192 @@ class Category(BaseModel):
 
     def __str__(self):
         return f"{self.category} - {self.subcategory}"
+
+
+class Transaction(BaseModel):
+    # Campos de estrutura hierárquica
+    PARENT_TYPE_CHOICES = [
+        ('split', 'Rateio'),
+        ('recurring', 'Recorrência'),
+        ('transfer_pair', 'Par de transferência'),
+    ]
+    
+    parent_transaction = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='child_transactions',
+        verbose_name='Transação pai'
+    )
+    parent_type = models.CharField(
+        'Tipo de relacionamento com o pai',
+        max_length=20,
+        choices=PARENT_TYPE_CHOICES,
+        blank=True,
+        null=True
+    )
+    is_split = models.BooleanField('Faz parte de um rateio', default=False)
+    is_split_parent = models.BooleanField('É a transação principal de um rateio', default=False)
+    split_sequence = models.IntegerField('Ordem do item no rateio', null=True, blank=True)
+    
+    # Campos principais
+    OPERATION_TYPE_CHOICES = [
+        ('simple', 'Simples'),
+        ('split', 'Rateio'),
+        ('transfer', 'Transferência'),
+    ]
+    
+    TRANSACTION_TYPE_CHOICES = [
+        ('CR', 'Crédito'),
+        ('DB', 'Débito'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pendente', 'Pendente'),
+        ('pago', 'Pago'),
+    ]
+    
+    operation_type = models.CharField(
+        'Tipo de operação',
+        max_length=10,
+        choices=OPERATION_TYPE_CHOICES,
+        default='simple'
+    )
+    transaction_type = models.CharField(
+        'Tipo da transação',
+        max_length=10,
+        choices=TRANSACTION_TYPE_CHOICES,
+        default='debito'
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='transactions',
+        verbose_name='Conta'
+    )
+    destination_account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='incoming_transfers',
+        null=True,
+        blank=True,
+        verbose_name='Conta de destino'
+    )
+    beneficiary = models.ForeignKey(
+        Beneficiary,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transactions',
+        verbose_name='Beneficiário'
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transactions',
+        verbose_name='Categoria'
+    )
+    description = models.CharField('Descrição', max_length=500, blank=True)
+    value = models.DecimalField(
+        'Valor',
+        max_digits=15,
+        decimal_places=2,
+        help_text='Valor sempre positivo'
+    )
+    buy_date = models.DateField('Data da operação')
+    pay_date = models.DateField('Data do pagamento efetivo', null=True, blank=True)
+    due_date = models.DateField('Data de vencimento', null=True, blank=True)
+    status = models.CharField(
+        'Status',
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='pendente'
+    )
+    
+    # Campos de recorrência
+    RECURRENCE_TYPE_CHOICES = [
+        ('daily', 'Diária'),
+        ('weekly', 'Semanal'),
+        ('monthly', 'Mensal'),
+        ('yearly', 'Anual'),
+    ]
+    
+    RECURRENCE_END_TYPE_CHOICES = [
+        ('never', 'Nunca'),
+        ('on_date', 'Em uma data'),
+        ('after_count', 'Após quantidade'),
+    ]
+    
+    is_recurring = models.BooleanField('É recorrente', default=False)
+    recurrence_type = models.CharField(
+        'Tipo de recorrência',
+        max_length=10,
+        choices=RECURRENCE_TYPE_CHOICES,
+        blank=True,
+        null=True
+    )
+    recurrence_interval = models.IntegerField(
+        'Intervalo entre recorrências',
+        default=1,
+        help_text='Ex: a cada 2 semanas'
+    )
+    recurrence_weekdays = models.CharField(
+        'Dias da semana para recorrência semanal',
+        max_length=20,
+        blank=True,
+        help_text='Ex: 1,3,5 para segunda, quarta, sexta'
+    )
+    recurrence_monthly_day = models.IntegerField(
+        'Dia específico do mês (DEPRECATED)',
+        null=True,
+        blank=True,
+        help_text='DEPRECATED: usar recurrence_start_date'
+    )
+    recurrence_start_date = models.DateField(
+        'Data da primeira parcela recorrente',
+        null=True,
+        blank=True
+    )
+    recurrence_end_type = models.CharField(
+        'Como a recorrência termina',
+        max_length=15,
+        choices=RECURRENCE_END_TYPE_CHOICES,
+        default='never',
+        blank=True
+    )
+    recurrence_end_date = models.DateField(
+        'Data em que a recorrência deve parar',
+        null=True,
+        blank=True
+    )
+    recurrence_end_count = models.IntegerField(
+        'Quantas vezes a transação deve se repetir',
+        null=True,
+        blank=True
+    )
+    recurrence_sequence = models.IntegerField(
+        'Número da sequência na recorrência',
+        null=True,
+        blank=True,
+        help_text='1, 2, 3... para transações filhas geradas'
+    )
+    
+    class Meta:
+        verbose_name = 'Transação'
+        verbose_name_plural = 'Transações'
+        ordering = ('-buy_date', '-created_at')
+    
+    def __str__(self):
+        desc = self.description or f"Transação #{self.id}"
+        return f"{desc} - {self.value} ({self.get_transaction_type_display()})"
+    
+    def save(self, *args, **kwargs):
+        # Define status automaticamente baseado em pay_date
+        if self.pay_date:
+            self.status = 'pago'
+        else:
+            self.status = 'pendente'
+        super().save(*args, **kwargs)        
