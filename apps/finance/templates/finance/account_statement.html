@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Extrato - {{ account.name }}</title>
+</head>
+<body>
+    <h1>Extrato da Conta</h1>
+    
+    <div>
+        <p><strong>Conta:</strong> {{ account.name }}</p>
+        {% if account.institution %}
+        <p><strong>Instituição:</strong> {{ account.institution }}</p>
+        {% endif %}
+        {% if account.number %}
+        <p><strong>Número:</strong> {{ account.number }}</p>
+        {% endif %}
+    </div>
+    
+    <div>
+        <p><strong>Saldo Inicial:</strong> R$ {{ opening_balance|floatformat:2 }}</p>
+    </div>
+    
+    <div>
+        <a href="?status=">Todos</a>
+        <a href="?status=executado">Executados</a>
+        <a href="?status=pendente">Pendentes</a>
+    </div>
+    
+    {% if paid_transactions_with_balance %}
+    <div>
+        <h2>Transações Executadas</h2>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Data Pagamento</th>
+                    <th>Descrição</th>
+                    <th>Beneficiário</th>
+                    <th>Tipo</th>
+                    <th>Categoria</th>
+                    <th>Valor</th>
+                    <th>Saldo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in paid_transactions_with_balance %}
+                <tr>
+                    <td>{{ item.transaction.pay_date|date:"d/m/Y" }}</td>
+                    <td>{{ item.transaction.description|default:"-" }}</td>
+                    <td>{{ item.transaction.beneficiary|default:"-" }}</td>
+                    <td>{{ item.transaction.get_transaction_type_display }}</td>
+                    <td>{{ item.transaction.category|default:"-" }}</td>
+                    <td>
+                        {% if item.transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
+                        R$ {{ item.transaction.value|floatformat:2 }}
+                    </td>
+                    <td>R$ {{ item.balance|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    
+    {% if pending_transactions %}
+    <div>
+        <h2>Transações Pendentes</h2>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Data Vencimento</th>
+                    <th>Descrição</th>
+                    <th>Beneficiário</th>
+                    <th>Tipo</th>
+                    <th>Categoria</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for transaction in pending_transactions %}
+                <tr>
+                    <td>
+                        {% if transaction.due_date %}
+                            {{ transaction.due_date|date:"d/m/Y" }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ transaction.description|default:"-" }}</td>
+                    <td>{{ transaction.beneficiary|default:"-" }}</td>
+                    <td>{{ transaction.get_transaction_type_display }}</td>
+                    <td>{{ transaction.category|default:"-" }}</td>
+                    <td>
+                        {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
+                        R$ {{ transaction.value|floatformat:2 }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    
+    {% if not paid_transactions_with_balance and not pending_transactions %}
+    <div>
+        <p>Nenhuma transação encontrada para esta conta.</p>
+    </div>
+    {% endif %}
+    
+    {% if paid_transactions_with_balance %}
+    <div>
+        <p><strong>Saldo Atual (após transações executadas):</strong> R$ {{ final_balance|floatformat:2 }}</p>
+    </div>
+    {% endif %}
+</body>
+</html>
