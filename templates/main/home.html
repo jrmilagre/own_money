@@ -12,10 +12,7 @@
         <div>
             {% for app in applications %}
             <div>
-                <a href="{% url app.url %}">
-                    <h2>{{ app.display_name }}</h2>
-                    <p>{{ app.description }}</p>
-                </a>
+                <h2><a href="{% url app.url %}">{{ app.display_name }}</a></h2>
             </div>
             {% empty %}
             <p>Nenhuma aplicação disponível no momento.</p>

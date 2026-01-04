@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if account %}Editar{% else %}Criar{% endif %} Conta - Finanças</title>
+</head>
+<body>
+    <nav>
+        <div>
+            <a href="{% url 'home' %}">← Voltar para o início</a>
+        </div>
+        <div>
+            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
+            <a href="{% url 'finance:accounts_list' %}">Contas</a>
+            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
+            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
+            <a href="{% url 'finance:categories_list' %}">Categorias</a>
+            <a href="{% url 'finance:transactions_list' %}">Transações</a>
+        </div>
+    </nav>
+    
+    <div>
+        <h1>{% if account %}Editar{% else %}Criar{% endif %} Conta</h1>
+        
+        <form method="post">
+            {% csrf_token %}
+            
+            <div>
+                <label for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+                {{ form.name }}
+                {% if form.name.errors %}
+                    <div>{{ form.name.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.institution.id_for_label }}">{{ form.institution.label }}</label>
+                {{ form.institution }}
+                {% if form.institution.errors %}
+                    <div>{{ form.institution.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.number.id_for_label }}">{{ form.number.label }}</label>
+                {{ form.number }}
+                {% if form.number.errors %}
+                    <div>{{ form.number.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.account_type.id_for_label }}">{{ form.account_type.label }}</label>
+                {{ form.account_type }}
+                {% if form.account_type.errors %}
+                    <div>{{ form.account_type.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.currency.id_for_label }}">{{ form.currency.label }}</label>
+                {{ form.currency }}
+                {% if form.currency.errors %}
+                    <div>{{ form.currency.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.opening_balance.id_for_label }}">{{ form.opening_balance.label }}</label>
+                {{ form.opening_balance }}
+                {% if form.opening_balance.errors %}
+                    <div>{{ form.opening_balance.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.minimum_balance.id_for_label }}">{{ form.minimum_balance.label }}</label>
+                {{ form.minimum_balance }}
+                {% if form.minimum_balance.errors %}
+                    <div>{{ form.minimum_balance.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.group.id_for_label }}">{{ form.group.label }}</label>
+                {{ form.group }}
+                {% if form.group.errors %}
+                    <div>{{ form.group.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.abbreviation.id_for_label }}">{{ form.abbreviation.label }}</label>
+                {{ form.abbreviation }}
+                {% if form.abbreviation.errors %}
+                    <div>{{ form.abbreviation.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.comment.id_for_label }}">{{ form.comment.label }}</label>
+                {{ form.comment }}
+                {% if form.comment.errors %}
+                    <div>{{ form.comment.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label>
+                    {{ form.is_favorite }}
+                    {{ form.is_favorite.label }}
+                </label>
+                {% if form.is_favorite.errors %}
+                    <div>{{ form.is_favorite.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label>
+                    {{ form.is_closed }}
+                    {{ form.is_closed.label }}
+                </label>
+                {% if form.is_closed.errors %}
+                    <div>{{ form.is_closed.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <button type="submit">Salvar</button>
+                <a href="{% url 'finance:accounts_list' %}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>
+

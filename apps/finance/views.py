@@ -1,5 +1,7 @@
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib import messages
 from .models import Account, Transaction, CreditCard, Beneficiary, Category
+from .forms import AccountForm
 
 
 def finance_home(request):
@@ -23,13 +25,74 @@ def accounts_list(request):
     """
     Lista todas as contas.
     """
-    accounts = Account.objects.filter(is_closed=False).order_by('-is_favorite', 'name')
+    accounts = Account.objects.all().order_by('-is_favorite', 'name')
     
     context = {
         'accounts': accounts,
     }
     
     return render(request, 'finance/accounts_list.html', context)
+
+
+def account_create(request):
+    """
+    Cria uma nova conta.
+    """
+    if request.method == 'POST':
+        form = AccountForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Conta criada com sucesso!')
+            return redirect('finance:accounts_list')
+    else:
+        form = AccountForm()
+    
+    context = {
+        'form': form,
+    }
+    
+    return render(request, 'finance/account_form.html', context)
+
+
+def account_update(request, account_id):
+    """
+    Atualiza uma conta existente.
+    """
+    account = get_object_or_404(Account, id=account_id)
+    
+    if request.method == 'POST':
+        form = AccountForm(request.POST, instance=account)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Conta atualizada com sucesso!')
+            return redirect('finance:accounts_list')
+    else:
+        form = AccountForm(instance=account)
+    
+    context = {
+        'form': form,
+        'account': account,
+    }
+    
+    return render(request, 'finance/account_form.html', context)
+
+
+def account_delete(request, account_id):
+    """
+    Deleta uma conta.
+    """
+    account = get_object_or_404(Account, id=account_id)
+    
+    if request.method == 'POST':
+        account.delete()
+        messages.success(request, 'Conta deletada com sucesso!')
+        return redirect('finance:accounts_list')
+    
+    context = {
+        'account': account,
+    }
+    
+    return render(request, 'finance/account_delete.html', context)
 
 
 def credit_cards_list(request):
