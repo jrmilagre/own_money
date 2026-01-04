@@ -1,65 +1,46 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <title>Finanças - Own Money</title>
-</head>
-<body>
-    <nav>
-        <div>
-            <a href="{% url 'home' %}">← Voltar para o início</a>
-        </div>
-        <div>
-            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
-            <a href="{% url 'finance:accounts_list' %}">Contas</a>
-            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
-            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
-            <a href="{% url 'finance:categories_list' %}">Categorias</a>
-            <a href="{% url 'finance:transactions_list' %}">Transações</a>
-        </div>
-    </nav>
+{% extends 'finance/base.html' %}
+
+{% block title %}Finanças - Own Money{% endblock %}
+
+{% block content %}
+    <h1>Visão Geral - Finanças</h1>
     
     <div>
-        <h1>Visão Geral - Finanças</h1>
-        
-        <div>
-            <h2>Resumo</h2>
-            <p>Total de contas: {{ total_accounts }}</p>
-            <p>Total de transações: {{ total_transactions }}</p>
-        </div>
-        
-        <div>
-            <h2>Contas</h2>
-            {% if accounts %}
-            <div>
-                {% for account in accounts %}
-                <div>
-                    <a href="{% url 'finance:account_statement' account.id %}">
-                        <h3>
-                            {{ account.name }}
-                            {% if account.is_favorite %}⭐{% endif %}
-                        </h3>
-                        {% if account.institution %}
-                        <p><strong>Instituição:</strong> {{ account.institution }}</p>
-                        {% endif %}
-                        {% if account.number %}
-                        <p><strong>Número:</strong> {{ account.number }}</p>
-                        {% endif %}
-                        <p><strong>Tipo:</strong> {{ account.get_account_type_display }}</p>
-                    </a>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div>
-                <p>Nenhuma conta cadastrada ainda.</p>
-                <p>
-                    <a href="/admin/finance/account/add/">Criar uma conta</a>
-                </p>
-            </div>
-            {% endif %}
-        </div>
+        <h2>Resumo</h2>
+        <p>Total de contas: {{ total_accounts }}</p>
+        <p>Total de transações: {{ total_transactions }}</p>
     </div>
-</body>
-</html>
+    
+    <div>
+        <h2>Contas</h2>
+        {% if accounts %}
+        <div>
+            {% for account in accounts %}
+            <div>
+                <a href="{% url 'finance:account_statement' account.id %}">
+                    <h3>
+                        {{ account.name }}
+                        {% if account.is_favorite %}⭐{% endif %}
+                    </h3>
+                    {% if account.institution %}
+                    <p><strong>Instituição:</strong> {{ account.institution }}</p>
+                    {% endif %}
+                    {% if account.number %}
+                    <p><strong>Número:</strong> {{ account.number }}</p>
+                    {% endif %}
+                    <p><strong>Tipo:</strong> {{ account.get_account_type_display }}</p>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div>
+            <p>Nenhuma conta cadastrada ainda.</p>
+            <p>
+                <a href="/admin/finance/account/add/">Criar uma conta</a>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+{% endblock %}
 

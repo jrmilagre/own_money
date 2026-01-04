@@ -1,25 +1,8 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <title>Deletar Conta - Finanças</title>
-</head>
-<body>
-    <nav>
-        <div>
-            <a href="{% url 'home' %}">← Voltar para o início</a>
-        </div>
-        <div>
-            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
-            <a href="{% url 'finance:accounts_list' %}">Contas</a>
-            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
-            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
-            <a href="{% url 'finance:categories_list' %}">Categorias</a>
-            <a href="{% url 'finance:transactions_list' %}">Transações</a>
-        </div>
-    </nav>
-    
-    <div>
+{% extends 'finance/base.html' %}
+
+{% block title %}Deletar Conta - Finanças{% endblock %}
+
+{% block content %}
         <h1>Deletar Conta</h1>
         
         <div>
@@ -34,7 +17,5 @@
                 <a href="{% url 'finance:accounts_list' %}">Cancelar</a>
             </div>
         </form>
-    </div>
-</body>
-</html>
+{% endblock %}
 
