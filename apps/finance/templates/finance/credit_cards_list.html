@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Cartões - Finanças</title>
+</head>
+<body>
+    <nav>
+        <div>
+            <a href="{% url 'home' %}">← Voltar para o início</a>
+        </div>
+        <div>
+            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
+            <a href="{% url 'finance:accounts_list' %}">Contas</a>
+            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
+            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
+            <a href="{% url 'finance:categories_list' %}">Categorias</a>
+            <a href="{% url 'finance:transactions_list' %}">Transações</a>
+        </div>
+    </nav>
+    
+    <div>
+        <h1>Cartões de Crédito</h1>
+        
+        {% if credit_cards %}
+        <div>
+            {% for card in credit_cards %}
+            <div>
+                <h3>{{ card }}</h3>
+                <p><strong>Conta:</strong> {{ card.account.name }}</p>
+                <p><strong>Titular:</strong> {{ card.cardholder }}</p>
+                <p><strong>Bandeira:</strong> {{ card.get_brand_display }}</p>
+                <p><strong>Tipo:</strong> {{ card.get_card_type_display }}</p>
+                <p><strong>Vencimento:</strong> {{ card.expiration_date|date:"d/m/Y" }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div>
+            <p>Nenhum cartão cadastrado ainda.</p>
+            <p>
+                <a href="/admin/finance/creditcard/add/">Criar um cartão</a>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+

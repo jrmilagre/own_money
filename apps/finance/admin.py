@@ -15,6 +15,27 @@ class AccountAdmin(admin.ModelAdmin):
     ordering = ('name',)
 
 
+@admin.register(CreditCard)
+class CreditCardAdmin(admin.ModelAdmin):
+    list_display = ('cardholder', 'brand', 'card_type', 'account', 'expiration_date', 'is_active')
+    list_filter = ('brand', 'card_type', 'is_active', 'account')
+    search_fields = ('cardholder', 'card_number', 'account__name')
+    readonly_fields = ('created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Informações Básicas', {
+            'fields': ('account', 'cardholder', 'card_number', 'expiration_date', 'cvv')
+        }),
+        ('Detalhes', {
+            'fields': ('brand', 'card_type', 'is_active')
+        }),
+        ('Auditoria', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+
 @admin.register(Beneficiary)
 class BeneficiaryAdmin(admin.ModelAdmin):
     list_display = ('full_name', 'created_at', 'updated_at')
@@ -42,6 +63,7 @@ class TransactionAdmin(admin.ModelAdmin):
         'id',
         'description',
         'account',
+        'credit_card',
         'transaction_type',
         'value',
         'buy_date',
@@ -58,12 +80,14 @@ class TransactionAdmin(admin.ModelAdmin):
         'beneficiary__full_name',
         'category__category',
         'category__subcategory',
+        'credit_card__cardholder',
     )
     list_filter = (
         'status',
         'transaction_type',
         'operation_type',
         'account',
+        'credit_card',
         'category',
         'buy_date',
         'is_recurring',
@@ -79,6 +103,7 @@ class TransactionAdmin(admin.ModelAdmin):
             'fields': (
                 'description',
                 'account',
+                'credit_card',
                 'transaction_type',
                 'operation_type',
                 'value',
@@ -137,5 +162,7 @@ class TransactionAdmin(admin.ModelAdmin):
             'destination_account',
             'beneficiary',
             'category',
-            'parent_transaction'
+            'parent_transaction',
+            'credit_card',
+            'credit_card__account',
         )

@@ -42,6 +42,63 @@ class Account(BaseModel):
         return self.name
 
 
+class CreditCard(BaseModel):
+    CARD_TYPE_CHOICES = [
+        ('credit', 'Crédito'),
+        ('debit', 'Débito'),
+        ('VA', 'Vale Alimentação'),
+        ('VR', 'Vale Refeição'),
+        ('both', 'Crédito e Débito'),
+    ]
+    
+    BRAND_CHOICES = [
+        ('visa', 'Visa'),
+        ('mastercard', 'Mastercard'),
+        ('amex', 'American Express'),
+        ('elo', 'Elo'),
+        ('hipercard', 'Hipercard'),
+        ('other', 'Outro'),
+    ]
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='credit_cards',
+        verbose_name='Conta'
+    )
+    card_number = models.CharField(
+        'Número do cartão',
+        max_length=19,
+        help_text='Formato: XXXX XXXX XXXX XXXX'
+    )
+    cardholder = models.CharField('Titular', max_length=200)
+    expiration_date = models.DateField('Data de vencimento')
+    cvv = models.CharField('CVV', max_length=4)
+    brand = models.CharField(
+        'Bandeira',
+        max_length=20,
+        choices=BRAND_CHOICES,
+        default='other'
+    )
+    card_type = models.CharField(
+        'Tipo',
+        max_length=10,
+        choices=CARD_TYPE_CHOICES,
+        default='credit'
+    )
+    is_active = models.BooleanField('Ativo', default=True)
+
+    class Meta:
+        verbose_name = 'Cartão de Crédito'
+        verbose_name_plural = 'Cartões de Crédito'
+        ordering = ('account', 'cardholder', 'card_number')
+
+    def __str__(self):
+        # Mostra apenas os últimos 4 dígitos por segurança
+        last_four = self.card_number.replace(' ', '')[-4:] if len(self.card_number.replace(' ', '')) >= 4 else '****'
+        return f"{self.get_brand_display()} - **** **** **** {last_four} ({self.account.name})"
+
+
 class Beneficiary(BaseModel):
     full_name = models.CharField('Nome completo', max_length=200)
 
@@ -139,6 +196,14 @@ class Transaction(BaseModel):
         related_name='transactions',
         verbose_name='Conta'
     )
+    credit_card = models.ForeignKey(
+        'CreditCard',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transactions',
+        verbose_name='Cartão de Crédito'
+    )    
     destination_account = models.ForeignKey(
         Account,
         on_delete=models.CASCADE,

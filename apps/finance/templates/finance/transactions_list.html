@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Transações - Finanças</title>
+</head>
+<body>
+    <nav>
+        <div>
+            <a href="{% url 'home' %}">← Voltar para o início</a>
+        </div>
+        <div>
+            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
+            <a href="{% url 'finance:accounts_list' %}">Contas</a>
+            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
+            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
+            <a href="{% url 'finance:categories_list' %}">Categorias</a>
+            <a href="{% url 'finance:transactions_list' %}">Transações</a>
+        </div>
+    </nav>
+    
+    <div>
+        <h1>Transações</h1>
+        
+        {% if transactions %}
+        <div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Conta</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transaction in transactions %}
+                    <tr>
+                        <td>{{ transaction.buy_date|date:"d/m/Y" }}</td>
+                        <td>{{ transaction.description|default:"-" }}</td>
+                        <td>{{ transaction.account.name }}</td>
+                        <td>{{ transaction.get_transaction_type_display }}</td>
+                        <td>
+                            {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
+                            R$ {{ transaction.value|floatformat:2 }}
+                        </td>
+                        <td>{{ transaction.get_status_display }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div>
+            <p>Nenhuma transação cadastrada ainda.</p>
+            <p>
+                <a href="/admin/finance/transaction/add/">Criar uma transação</a>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+

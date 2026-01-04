@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Categorias - Finanças</title>
+</head>
+<body>
+    <nav>
+        <div>
+            <a href="{% url 'home' %}">← Voltar para o início</a>
+        </div>
+        <div>
+            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
+            <a href="{% url 'finance:accounts_list' %}">Contas</a>
+            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
+            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
+            <a href="{% url 'finance:categories_list' %}">Categorias</a>
+            <a href="{% url 'finance:transactions_list' %}">Transações</a>
+        </div>
+    </nav>
+    
+    <div>
+        <h1>Categorias</h1>
+        
+        {% if categories %}
+        <div>
+            {% for category in categories %}
+            <div>
+                <h3>{{ category.category }} - {{ category.subcategory }}</h3>
+                <p><strong>Tipo padrão:</strong> {{ category.get_default_transaction_type_display }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div>
+            <p>Nenhuma categoria cadastrada ainda.</p>
+            <p>
+                <a href="/admin/finance/category/add/">Criar uma categoria</a>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+

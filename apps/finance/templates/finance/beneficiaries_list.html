@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Beneficiários - Finanças</title>
+</head>
+<body>
+    <nav>
+        <div>
+            <a href="{% url 'home' %}">← Voltar para o início</a>
+        </div>
+        <div>
+            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
+            <a href="{% url 'finance:accounts_list' %}">Contas</a>
+            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
+            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
+            <a href="{% url 'finance:categories_list' %}">Categorias</a>
+            <a href="{% url 'finance:transactions_list' %}">Transações</a>
+        </div>
+    </nav>
+    
+    <div>
+        <h1>Beneficiários</h1>
+        
+        {% if beneficiaries %}
+        <div>
+            {% for beneficiary in beneficiaries %}
+            <div>
+                <h3>{{ beneficiary.full_name }}</h3>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div>
+            <p>Nenhum beneficiário cadastrado ainda.</p>
+            <p>
+                <a href="/admin/finance/beneficiary/add/">Criar um beneficiário</a>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+

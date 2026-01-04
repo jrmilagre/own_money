@@ -1,5 +1,87 @@
 from django.shortcuts import render, get_object_or_404
-from .models import Account, Transaction
+from .models import Account, Transaction, CreditCard, Beneficiary, Category
+
+
+def finance_home(request):
+    """
+    Página inicial da aplicação finance com visão geral.
+    """
+    accounts = Account.objects.filter(is_closed=False).order_by('-is_favorite', 'name')
+    total_accounts = accounts.count()
+    total_transactions = Transaction.objects.count()
+    
+    context = {
+        'accounts': accounts,
+        'total_accounts': total_accounts,
+        'total_transactions': total_transactions,
+    }
+    
+    return render(request, 'finance/finance_home.html', context)
+
+
+def accounts_list(request):
+    """
+    Lista todas as contas.
+    """
+    accounts = Account.objects.filter(is_closed=False).order_by('-is_favorite', 'name')
+    
+    context = {
+        'accounts': accounts,
+    }
+    
+    return render(request, 'finance/accounts_list.html', context)
+
+
+def credit_cards_list(request):
+    """
+    Lista todos os cartões de crédito.
+    """
+    credit_cards = CreditCard.objects.filter(is_active=True).order_by('account', 'cardholder')
+    
+    context = {
+        'credit_cards': credit_cards,
+    }
+    
+    return render(request, 'finance/credit_cards_list.html', context)
+
+
+def beneficiaries_list(request):
+    """
+    Lista todos os beneficiários.
+    """
+    beneficiaries = Beneficiary.objects.all().order_by('full_name')
+    
+    context = {
+        'beneficiaries': beneficiaries,
+    }
+    
+    return render(request, 'finance/beneficiaries_list.html', context)
+
+
+def categories_list(request):
+    """
+    Lista todas as categorias.
+    """
+    categories = Category.objects.all().order_by('category', 'subcategory')
+    
+    context = {
+        'categories': categories,
+    }
+    
+    return render(request, 'finance/categories_list.html', context)
+
+
+def transactions_list(request):
+    """
+    Lista todas as transações.
+    """
+    transactions = Transaction.objects.all().order_by('-buy_date', '-created_at')
+    
+    context = {
+        'transactions': transactions,
+    }
+    
+    return render(request, 'finance/transactions_list.html', context)
 
 
 def account_statement(request, account_id):
