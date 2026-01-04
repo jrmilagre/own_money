@@ -22,9 +22,21 @@
     <div>
         <h1>Transações</h1>
         
+        {% if messages %}
+        <div>
+            {% for message in messages %}
+            <div>{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <div>
+            <a href="{% url 'finance:transaction_create' %}">Incluir</a>
+        </div>
+        
         {% if transactions %}
         <div>
-            <table>
+            <table border="1">
                 <thead>
                     <tr>
                         <th>Data</th>
@@ -33,6 +45,7 @@
                         <th>Tipo</th>
                         <th>Valor</th>
                         <th>Status</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -47,6 +60,10 @@
                             R$ {{ transaction.value|floatformat:2 }}
                         </td>
                         <td>{{ transaction.get_status_display }}</td>
+                        <td>
+                            <a href="{% url 'finance:transaction_update' transaction.id %}">Editar</a> |
+                            <a href="{% url 'finance:transaction_delete' transaction.id %}">Deletar</a>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -55,9 +72,6 @@
         {% else %}
         <div>
             <p>Nenhuma transação cadastrada ainda.</p>
-            <p>
-                <a href="/admin/finance/transaction/add/">Criar uma transação</a>
-            </p>
         </div>
         {% endif %}
     </div>

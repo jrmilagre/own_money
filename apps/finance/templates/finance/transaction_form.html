@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Editar Transação - Finanças</title>
+</head>
+<body>
+    <nav>
+        <div>
+            <a href="{% url 'home' %}">← Voltar para o início</a>
+        </div>
+        <div>
+            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
+            <a href="{% url 'finance:accounts_list' %}">Contas</a>
+            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
+            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
+            <a href="{% url 'finance:categories_list' %}">Categorias</a>
+            <a href="{% url 'finance:transactions_list' %}">Transações</a>
+        </div>
+    </nav>
+    
+    <div>
+        <h1>{% if transaction %}Editar{% else %}Criar{% endif %} Transação</h1>
+        
+        {% if messages %}
+        <div>
+            {% for message in messages %}
+            <div>{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <form method="post">
+            {% csrf_token %}
+            
+            <div>
+                <label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+                {{ form.description }}
+                {% if form.description.errors %}
+                    <div>{{ form.description.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.account.id_for_label }}">{{ form.account.label }}</label>
+                {{ form.account }}
+                {% if form.account.errors %}
+                    <div>{{ form.account.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.credit_card.id_for_label }}">{{ form.credit_card.label }}</label>
+                {{ form.credit_card }}
+                {% if form.credit_card.errors %}
+                    <div>{{ form.credit_card.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.transaction_type.id_for_label }}">{{ form.transaction_type.label }}</label>
+                {{ form.transaction_type }}
+                {% if form.transaction_type.errors %}
+                    <div>{{ form.transaction_type.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.operation_type.id_for_label }}">{{ form.operation_type.label }}</label>
+                {{ form.operation_type }}
+                {% if form.operation_type.errors %}
+                    <div>{{ form.operation_type.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.value.id_for_label }}">{{ form.value.label }}</label>
+                {{ form.value }}
+                {% if form.value.errors %}
+                    <div>{{ form.value.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.category.id_for_label }}">{{ form.category.label }}</label>
+                {{ form.category }}
+                {% if form.category.errors %}
+                    <div>{{ form.category.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.beneficiary.id_for_label }}">{{ form.beneficiary.label }}</label>
+                {{ form.beneficiary }}
+                {% if form.beneficiary.errors %}
+                    <div>{{ form.beneficiary.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.buy_date.id_for_label }}">{{ form.buy_date.label }}</label>
+                {{ form.buy_date }}
+                {% if form.buy_date.errors %}
+                    <div>{{ form.buy_date.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.due_date.id_for_label }}">{{ form.due_date.label }}</label>
+                {{ form.due_date }}
+                {% if form.due_date.errors %}
+                    <div>{{ form.due_date.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.pay_date.id_for_label }}">{{ form.pay_date.label }}</label>
+                {{ form.pay_date }}
+                {% if form.pay_date.errors %}
+                    <div>{{ form.pay_date.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <label for="{{ form.status.id_for_label }}">{{ form.status.label }}</label>
+                {{ form.status }}
+                {% if form.status.errors %}
+                    <div>{{ form.status.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div>
+                <button type="submit">Salvar</button>
+                <a href="{% url 'finance:transactions_list' %}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>
+

@@ -1,7 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from .models import Account, Transaction, CreditCard, Beneficiary, Category
-from .forms import AccountForm
+from .forms import AccountForm, TransactionForm
 
 
 def finance_home(request):
@@ -145,6 +145,67 @@ def transactions_list(request):
     }
     
     return render(request, 'finance/transactions_list.html', context)
+
+
+def transaction_create(request):
+    """
+    Cria uma nova transação.
+    """
+    if request.method == 'POST':
+        form = TransactionForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Transação criada com sucesso!')
+            return redirect('finance:transactions_list')
+    else:
+        form = TransactionForm()
+    
+    context = {
+        'form': form,
+    }
+    
+    return render(request, 'finance/transaction_form.html', context)
+
+
+def transaction_update(request, transaction_id):
+    """
+    Atualiza uma transação existente.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    if request.method == 'POST':
+        form = TransactionForm(request.POST, instance=transaction)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Transação atualizada com sucesso!')
+            return redirect('finance:transactions_list')
+    else:
+        form = TransactionForm(instance=transaction)
+    
+    context = {
+        'form': form,
+        'transaction': transaction,
+    }
+    
+    return render(request, 'finance/transaction_form.html', context)
+
+
+def transaction_delete(request, transaction_id):
+    """
+    Deleta uma transação.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    if request.method == 'POST':
+        transaction.delete()
+        messages.success(request, 'Transação deletada com sucesso!')
+        return redirect('finance:transactions_list')
+    
+    context = {
+        'transaction': transaction,
+    }
+    
+    return render(request, 'finance/transaction_delete.html', context)
 
 
 def account_statement(request, account_id):

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Deletar Transação - Finanças</title>
+</head>
+<body>
+    <nav>
+        <div>
+            <a href="{% url 'home' %}">← Voltar para o início</a>
+        </div>
+        <div>
+            <a href="{% url 'finance:finance_home' %}">Visão geral</a>
+            <a href="{% url 'finance:accounts_list' %}">Contas</a>
+            <a href="{% url 'finance:credit_cards_list' %}">Cartões</a>
+            <a href="{% url 'finance:beneficiaries_list' %}">Beneficiários</a>
+            <a href="{% url 'finance:categories_list' %}">Categorias</a>
+            <a href="{% url 'finance:transactions_list' %}">Transações</a>
+        </div>
+    </nav>
+    
+    <div>
+        <h1>Deletar Transação</h1>
+        
+        <div>
+            <p>Tem certeza que deseja deletar a transação <strong>{{ transaction.description|default:"Sem descrição" }}</strong>?</p>
+            <p>Data: {{ transaction.buy_date|date:"d/m/Y" }}</p>
+            <p>Valor: R$ {{ transaction.value|floatformat:2 }}</p>
+            <p>Esta ação não pode ser desfeita.</p>
+        </div>
+        
+        <form method="post">
+            {% csrf_token %}
+            <div>
+                <button type="submit">Confirmar Deletar</button>
+                <a href="{% url 'finance:transactions_list' %}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>
+

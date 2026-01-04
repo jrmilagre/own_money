@@ -13,6 +13,9 @@ urlpatterns = [
     path('beneficiaries/', views.beneficiaries_list, name='beneficiaries_list'),
     path('categories/', views.categories_list, name='categories_list'),
     path('transactions/', views.transactions_list, name='transactions_list'),
+    path('transactions/create/', views.transaction_create, name='transaction_create'),
+    path('transactions/<int:transaction_id>/update/', views.transaction_update, name='transaction_update'),
+    path('transactions/<int:transaction_id>/delete/', views.transaction_delete, name='transaction_delete'),
     path('account/<int:account_id>/statement/', views.account_statement, name='account_statement'),
 ]
 
