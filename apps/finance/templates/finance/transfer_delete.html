@@ -1,0 +1,30 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Deletar Transferência - Finanças{% endblock %}
+
+{% block content %}
+    <h1>Deletar Transferência</h1>
+    
+    <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+        <p><strong>Atenção!</strong> Esta ação irá deletar ambas as transações desta transferência:</p>
+        <ul>
+            <li><strong>Conta de origem:</strong> {{ source_account.name }}</li>
+            <li><strong>Conta de destino:</strong> {{ destination_account.name }}</li>
+            <li><strong>Valor:</strong> R$ {{ value|floatformat:2 }}</li>
+        </ul>
+        <p>Esta ação não pode ser desfeita.</p>
+    </div>
+    
+    <form method="post">
+        {% csrf_token %}
+        <div style="margin-top: 20px;">
+            <button type="submit" style="padding: 10px 20px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Confirmar Exclusão
+            </button>
+            <a href="{% url 'finance:transactions_list' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancelar
+            </a>
+        </div>
+    </form>
+{% endblock %}
+

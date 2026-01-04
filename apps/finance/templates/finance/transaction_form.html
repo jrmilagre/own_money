@@ -48,6 +48,7 @@
                 {% endif %}
             </div>
             
+            {% if form.operation_type.field.widget.input_type != 'hidden' %}
             <div>
                 <label for="{{ form.operation_type.id_for_label }}">{{ form.operation_type.label }}</label>
                 {{ form.operation_type }}
@@ -55,6 +56,9 @@
                     <div>{{ form.operation_type.errors }}</div>
                 {% endif %}
             </div>
+            {% else %}
+            {{ form.operation_type }}
+            {% endif %}
             
             <div>
                 <label for="{{ form.value.id_for_label }}">{{ form.value.label }}</label>
@@ -114,7 +118,11 @@
             
             <div>
                 <button type="submit">Salvar</button>
+                {% if not transaction %}
+                <a href="{% url 'finance:transaction_type_select' %}">Cancelar</a>
+                {% else %}
                 <a href="{% url 'finance:transactions_list' %}">Cancelar</a>
+                {% endif %}
             </div>
         </form>
 {% endblock %}

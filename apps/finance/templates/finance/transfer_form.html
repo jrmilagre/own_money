@@ -1,0 +1,112 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}{% if is_edit %}Editar{% else %}Nova{% endif %} Transferência - Finanças{% endblock %}
+
+{% block content %}
+    <h1>{% if is_edit %}Editar{% else %}Nova{% endif %} Transferência entre Contas</h1>
+    
+    {% if messages %}
+    <div>
+        {% for message in messages %}
+        <div>{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <form method="post">
+        {% csrf_token %}
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.source_account.id_for_label }}">{{ form.source_account.label }}</label>
+            {{ form.source_account }}
+            {% if form.source_account.errors %}
+                <div style="color: red;">{{ form.source_account.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.destination_account.id_for_label }}">{{ form.destination_account.label }}</label>
+            {{ form.destination_account }}
+            {% if form.destination_account.errors %}
+                <div style="color: red;">{{ form.destination_account.errors }}</div>
+            {% endif %}
+            {% if form.non_field_errors %}
+                {% for error in form.non_field_errors %}
+                    <div style="color: red;">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.value.id_for_label }}">{{ form.value.label }}</label>
+            {{ form.value }}
+            {% if form.value.help_text %}
+                <small style="display: block; color: #666;">{{ form.value.help_text }}</small>
+            {% endif %}
+            {% if form.value.errors %}
+                <div style="color: red;">{{ form.value.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+            {{ form.description }}
+            {% if form.description.errors %}
+                <div style="color: red;">{{ form.description.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.buy_date.id_for_label }}">{{ form.buy_date.label }}</label>
+            {{ form.buy_date }}
+            {% if form.buy_date.errors %}
+                <div style="color: red;">{{ form.buy_date.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.pay_date.id_for_label }}">{{ form.pay_date.label }}</label>
+            {{ form.pay_date }}
+            {% if form.pay_date.errors %}
+                <div style="color: red;">{{ form.pay_date.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <button type="submit" style="padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                {% if is_edit %}Atualizar{% else %}Criar{% endif %} Transferência
+            </button>
+            {% if is_edit %}
+            <a href="{% url 'finance:transactions_list' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancelar
+            </a>
+            {% else %}
+            <a href="{% url 'finance:transaction_type_select' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancelar
+            </a>
+            {% endif %}
+        </div>
+    </form>
+    
+    <script>
+        // Validação visual para contas iguais
+        document.addEventListener('DOMContentLoaded', function() {
+            const sourceSelect = document.getElementById('{{ form.source_account.id_for_label }}');
+            const destSelect = document.getElementById('{{ form.destination_account.id_for_label }}');
+            
+            function checkAccounts() {
+                if (sourceSelect.value && destSelect.value && sourceSelect.value === destSelect.value) {
+                    destSelect.style.borderColor = 'red';
+                    destSelect.style.backgroundColor = '#ffe6e6';
+                } else {
+                    destSelect.style.borderColor = '';
+                    destSelect.style.backgroundColor = '';
+                }
+            }
+            
+            sourceSelect.addEventListener('change', checkAccounts);
+            destSelect.addEventListener('change', checkAccounts);
+        });
+    </script>
+{% endblock %}
+

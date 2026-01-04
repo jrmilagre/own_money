@@ -1,0 +1,38 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Tipo de Transação - Finanças{% endblock %}
+
+{% block content %}
+    <h1>Selecione o Tipo de Transação</h1>
+    
+    <div style="display: flex; gap: 20px; margin-top: 30px;">
+        <div style="border: 2px solid #ddd; padding: 20px; border-radius: 8px; flex: 1; text-align: center;">
+            <h2>Transação Simples</h2>
+            <p>Uma transação única com uma conta, categoria e valor.</p>
+            <a href="{% url 'finance:transaction_create' %}" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">
+                Criar Transação Simples
+            </a>
+        </div>
+        
+        <div style="border: 2px solid #007bff; padding: 20px; border-radius: 8px; flex: 1; text-align: center; background-color: #f0f8ff;">
+            <h2>Transferência entre Contas</h2>
+            <p>Transfere dinheiro de uma conta para outra. Cria automaticamente débito e crédito.</p>
+            <a href="{% url 'finance:transfer_create' %}" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background-color: #28a745; color: white; text-decoration: none; border-radius: 4px;">
+                Criar Transferência
+            </a>
+        </div>
+        
+        <div style="border: 2px solid #ddd; padding: 20px; border-radius: 8px; flex: 1; text-align: center; opacity: 0.6;">
+            <h2>Transação Composta</h2>
+            <p>Múltiplas transações em uma única tela (rateio, salário com descontos, etc.).</p>
+            <button disabled style="display: inline-block; margin-top: 15px; padding: 10px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: not-allowed;">
+                Em Breve
+            </button>
+        </div>
+    </div>
+    
+    <div style="margin-top: 30px;">
+        <a href="{% url 'finance:transactions_list' %}">← Voltar para lista de transações</a>
+    </div>
+{% endblock %}
+

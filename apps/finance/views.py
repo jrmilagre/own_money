@@ -1,7 +1,8 @@
+from django import forms
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from .models import Account, Transaction, CreditCard, Beneficiary, Category
-from .forms import AccountForm, TransactionForm
+from .forms import AccountForm, TransactionForm, TransferTransactionForm
 
 
 def finance_home(request):
@@ -147,18 +148,32 @@ def transactions_list(request):
     return render(request, 'finance/transactions_list.html', context)
 
 
+def transaction_type_select(request):
+    """
+    Wizard inicial para seleção do tipo de transação.
+    """
+    return render(request, 'finance/transaction_type_select.html')
+
+
 def transaction_create(request):
     """
-    Cria uma nova transação.
+    Cria uma nova transação simples.
     """
     if request.method == 'POST':
         form = TransactionForm(request.POST)
         if form.is_valid():
-            form.save()
+            # Define operation_type como 'simple' para transações simples
+            transaction = form.save(commit=False)
+            transaction.operation_type = 'simple'
+            transaction.save()
             messages.success(request, 'Transação criada com sucesso!')
             return redirect('finance:transactions_list')
     else:
         form = TransactionForm()
+        # Define operation_type como 'simple' no formulário inicial
+        form.fields['operation_type'].initial = 'simple'
+        # Esconder o campo operation_type do formulário
+        form.fields['operation_type'].widget = forms.HiddenInput()
     
     context = {
         'form': form,
@@ -167,11 +182,209 @@ def transaction_create(request):
     return render(request, 'finance/transaction_form.html', context)
 
 
+def transfer_create(request):
+    """
+    Cria uma transferência entre contas, gerando automaticamente o par de transações.
+    """
+    if request.method == 'POST':
+        form = TransferTransactionForm(request.POST)
+        if form.is_valid():
+            source_account = form.cleaned_data['source_account']
+            destination_account = form.cleaned_data['destination_account']
+            value = form.cleaned_data['value']
+            description = form.cleaned_data.get('description', '')
+            buy_date = form.cleaned_data['buy_date']
+            pay_date = form.cleaned_data.get('pay_date')
+            
+            # Determina status baseado em pay_date
+            status = 'pago' if pay_date else 'pendente'
+            
+            # Cria a transação de débito (origem)
+            debit_transaction = Transaction.objects.create(
+                account=source_account,
+                destination_account=destination_account,
+                transaction_type='DB',
+                operation_type='transfer',
+                value=value,
+                description=description or f'Transferência para {destination_account.name}',
+                buy_date=buy_date,
+                pay_date=pay_date,
+                status=status
+            )
+            
+            # Cria a transação de crédito (destino)
+            credit_transaction = Transaction.objects.create(
+                account=destination_account,
+                destination_account=source_account,
+                transaction_type='CR',
+                operation_type='transfer',
+                value=value,
+                description=description or f'Transferência de {source_account.name}',
+                buy_date=buy_date,
+                pay_date=pay_date,
+                status=status,
+                parent_transaction=debit_transaction,
+                parent_type='transfer_pair'
+            )
+            
+            messages.success(
+                request, 
+                f'Transferência de R$ {value:.2f} de {source_account.name} para {destination_account.name} criada com sucesso!'
+            )
+            return redirect('finance:transactions_list')
+    else:
+        form = TransferTransactionForm()
+    
+    context = {
+        'form': form,
+    }
+    
+    return render(request, 'finance/transfer_form.html', context)
+
+
+def transfer_update(request, transaction_id):
+    """
+    Edita uma transferência entre contas, atualizando ambas as transações do par.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    # Identifica qual transação foi clicada e busca o par completo
+    if transaction.operation_type == 'transfer' and transaction.parent_transaction is None:
+        # É a transação de débito (origem)
+        debit_transaction = transaction
+        credit_transaction = transaction.child_transactions.filter(parent_type='transfer_pair').first()
+    elif transaction.parent_type == 'transfer_pair':
+        # É a transação de crédito (destino)
+        credit_transaction = transaction
+        debit_transaction = transaction.parent_transaction
+    else:
+        messages.error(request, 'Transação não é uma transferência válida.')
+        return redirect('finance:transactions_list')
+    
+    if request.method == 'POST':
+        form = TransferTransactionForm(request.POST)
+        if form.is_valid():
+            source_account = form.cleaned_data['source_account']
+            destination_account = form.cleaned_data['destination_account']
+            value = form.cleaned_data['value']
+            description = form.cleaned_data.get('description', '')
+            buy_date = form.cleaned_data['buy_date']
+            pay_date = form.cleaned_data.get('pay_date')
+            
+            # Determina status baseado em pay_date
+            status = 'pago' if pay_date else 'pendente'
+            
+            # Atualiza a transação de débito (origem)
+            debit_transaction.account = source_account
+            debit_transaction.destination_account = destination_account
+            debit_transaction.value = value
+            debit_transaction.description = description or f'Transferência para {destination_account.name}'
+            debit_transaction.buy_date = buy_date
+            debit_transaction.pay_date = pay_date
+            debit_transaction.status = status
+            debit_transaction.save()
+            
+            # Atualiza a transação de crédito (destino)
+            if credit_transaction:
+                credit_transaction.account = destination_account
+                credit_transaction.destination_account = source_account
+                credit_transaction.value = value
+                credit_transaction.description = description or f'Transferência de {source_account.name}'
+                credit_transaction.buy_date = buy_date
+                credit_transaction.pay_date = pay_date
+                credit_transaction.status = status
+                credit_transaction.save()
+            
+            messages.success(
+                request, 
+                f'Transferência de R$ {value:.2f} de {source_account.name} para {destination_account.name} atualizada com sucesso!'
+            )
+            return redirect('finance:transactions_list')
+    else:
+        # Preenche o formulário com os dados atuais da transferência
+        # Remove o prefixo automático da descrição se existir
+        description = debit_transaction.description or ''
+        if description.startswith('Transferência para ') or description.startswith('Transferência de '):
+            # Mantém apenas a descrição do usuário se houver algo além do prefixo
+            parts = description.split(' - ', 1)
+            if len(parts) > 1:
+                description = parts[1]
+            else:
+                description = ''
+        
+        initial_data = {
+            'source_account': debit_transaction.account,
+            'destination_account': debit_transaction.destination_account,
+            'value': debit_transaction.value,
+            'description': description,
+            'buy_date': debit_transaction.buy_date,
+            'pay_date': debit_transaction.pay_date,
+        }
+        form = TransferTransactionForm(initial=initial_data)
+    
+    context = {
+        'form': form,
+        'transaction': debit_transaction,
+        'is_edit': True,
+    }
+    
+    return render(request, 'finance/transfer_form.html', context)
+
+
+def transfer_delete(request, transaction_id):
+    """
+    Deleta uma transferência, removendo ambas as transações do par.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    # Identifica qual transação foi clicada e busca o par completo
+    if transaction.operation_type == 'transfer' and transaction.parent_transaction is None:
+        # É a transação de débito (origem) - deletar ela vai cascatear a de crédito
+        debit_transaction = transaction
+        credit_transaction = transaction.child_transactions.filter(parent_type='transfer_pair').first()
+        source_account = transaction.account
+        destination_account = transaction.destination_account
+        value = transaction.value
+    elif transaction.parent_type == 'transfer_pair':
+        # É a transação de crédito (destino) - deletar a pai (débito)
+        credit_transaction = transaction
+        debit_transaction = transaction.parent_transaction
+        source_account = debit_transaction.account
+        destination_account = debit_transaction.destination_account
+        value = debit_transaction.value
+    else:
+        messages.error(request, 'Transação não é uma transferência válida.')
+        return redirect('finance:transactions_list')
+    
+    if request.method == 'POST':
+        # Deleta a transação de débito (que vai cascatear a de crédito via CASCADE)
+        debit_transaction.delete()
+        messages.success(
+            request, 
+            f'Transferência de R$ {value:.2f} de {source_account.name} para {destination_account.name} deletada com sucesso!'
+        )
+        return redirect('finance:transactions_list')
+    
+    context = {
+        'transaction': debit_transaction,
+        'source_account': source_account,
+        'destination_account': destination_account,
+        'value': value,
+    }
+    
+    return render(request, 'finance/transfer_delete.html', context)
+
+
 def transaction_update(request, transaction_id):
     """
     Atualiza uma transação existente.
+    Redireciona para transfer_update se for uma transferência.
     """
     transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    # Se for uma transferência, redireciona para o formulário específico
+    if transaction.operation_type == 'transfer' or transaction.parent_type == 'transfer_pair':
+        return redirect('finance:transfer_update', transaction_id=transaction_id)
     
     if request.method == 'POST':
         form = TransactionForm(request.POST, instance=transaction)
@@ -193,8 +406,13 @@ def transaction_update(request, transaction_id):
 def transaction_delete(request, transaction_id):
     """
     Deleta uma transação.
+    Redireciona para transfer_delete se for uma transferência.
     """
     transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    # Se for uma transferência, redireciona para o handler específico
+    if transaction.operation_type == 'transfer' or transaction.parent_type == 'transfer_pair':
+        return redirect('finance:transfer_delete', transaction_id=transaction_id)
     
     if request.method == 'POST':
         transaction.delete()

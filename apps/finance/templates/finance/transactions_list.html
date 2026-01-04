@@ -14,7 +14,7 @@
         {% endif %}
         
         <div>
-            <a href="{% url 'finance:transaction_create' %}">Incluir</a>
+            <a href="{% url 'finance:transaction_type_select' %}">Incluir</a>
         </div>
         
         {% if transactions %}
@@ -33,6 +33,53 @@
                 </thead>
                 <tbody>
                     {% for transaction in transactions %}
+                    {% if transaction.operation_type == 'transfer' or transaction.parent_type == 'transfer_pair' %}
+                    {% comment %}Transação de transferência - identifica se é débito ou crédito{% endcomment %}
+                    {% if transaction.parent_type == 'transfer_pair' %}
+                        {% comment %}É a transação de crédito (destino) - usa a pai para ações{% endcomment %}
+                        {% with parent_transaction=transaction.parent_transaction %}
+                    <tr style="opacity: 0.7;">
+                        <td>{{ transaction.buy_date|date:"d/m/Y" }}</td>
+                        <td>
+                            {{ transaction.description|default:"-" }}
+                            <span style="font-size: 0.8em; color: #666;">(transferência)</span>
+                        </td>
+                        <td>{{ transaction.account.name }}</td>
+                        <td>{{ transaction.get_transaction_type_display }}</td>
+                        <td>
+                            {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
+                            R$ {{ transaction.value|floatformat:2 }}
+                        </td>
+                        <td>{{ transaction.get_status_display }}</td>
+                        <td>
+                            <a href="{% url 'finance:transfer_update' parent_transaction.id %}">Editar</a> |
+                            <a href="{% url 'finance:transfer_delete' parent_transaction.id %}">Deletar</a>
+                        </td>
+                    </tr>
+                        {% endwith %}
+                    {% else %}
+                        {% comment %}É a transação de débito (origem){% endcomment %}
+                    <tr>
+                        <td>{{ transaction.buy_date|date:"d/m/Y" }}</td>
+                        <td>
+                            {{ transaction.description|default:"-" }}
+                            <span style="font-size: 0.8em; color: #007bff;">↔ Transferência</span>
+                        </td>
+                        <td>{{ transaction.account.name }}</td>
+                        <td>{{ transaction.get_transaction_type_display }}</td>
+                        <td>
+                            {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
+                            R$ {{ transaction.value|floatformat:2 }}
+                        </td>
+                        <td>{{ transaction.get_status_display }}</td>
+                        <td>
+                            <a href="{% url 'finance:transfer_update' transaction.id %}">Editar</a> |
+                            <a href="{% url 'finance:transfer_delete' transaction.id %}">Deletar</a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% else %}
+                    {% comment %}Transação normal{% endcomment %}
                     <tr>
                         <td>{{ transaction.buy_date|date:"d/m/Y" }}</td>
                         <td>{{ transaction.description|default:"-" }}</td>
@@ -48,6 +95,7 @@
                             <a href="{% url 'finance:transaction_delete' transaction.id %}">Deletar</a>
                         </td>
                     </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>

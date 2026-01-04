@@ -13,9 +13,13 @@ urlpatterns = [
     path('beneficiaries/', views.beneficiaries_list, name='beneficiaries_list'),
     path('categories/', views.categories_list, name='categories_list'),
     path('transactions/', views.transactions_list, name='transactions_list'),
-    path('transactions/create/', views.transaction_create, name='transaction_create'),
+    path('transactions/create/', views.transaction_type_select, name='transaction_type_select'),
+    path('transactions/create/simple/', views.transaction_create, name='transaction_create'),
+    path('transactions/create/transfer/', views.transfer_create, name='transfer_create'),
     path('transactions/<int:transaction_id>/update/', views.transaction_update, name='transaction_update'),
+    path('transactions/<int:transaction_id>/update/transfer/', views.transfer_update, name='transfer_update'),
     path('transactions/<int:transaction_id>/delete/', views.transaction_delete, name='transaction_delete'),
+    path('transactions/<int:transaction_id>/delete/transfer/', views.transfer_delete, name='transfer_delete'),
     path('account/<int:account_id>/statement/', views.account_statement, name='account_statement'),
 ]
 

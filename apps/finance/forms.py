@@ -1,4 +1,5 @@
 from django import forms
+from django.core.exceptions import ValidationError
 from .models import Account, Transaction
 
 
@@ -66,4 +67,54 @@ class TransactionForm(forms.ModelForm):
             'pay_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'status': forms.Select(attrs={'class': 'form-control'}),
         }
+
+
+class TransferTransactionForm(forms.Form):
+    """Formulário específico para transferências entre contas."""
+    source_account = forms.ModelChoiceField(
+        queryset=Account.objects.filter(is_closed=False),
+        label='Conta de origem',
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    destination_account = forms.ModelChoiceField(
+        queryset=Account.objects.filter(is_closed=False),
+        label='Conta de destino',
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    value = forms.DecimalField(
+        label='Valor',
+        max_digits=15,
+        decimal_places=2,
+        min_value=0.01,
+        help_text='Valor sempre positivo',
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
+    )
+    description = forms.CharField(
+        label='Descrição',
+        max_length=500,
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Descrição opcional'})
+    )
+    buy_date = forms.DateField(
+        label='Data da operação',
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+    )
+    pay_date = forms.DateField(
+        label='Data do pagamento efetivo',
+        required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+    )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        source_account = cleaned_data.get('source_account')
+        destination_account = cleaned_data.get('destination_account')
+        
+        if source_account and destination_account:
+            if source_account == destination_account:
+                raise ValidationError({
+                    'destination_account': ['A conta de destino deve ser diferente da conta de origem.']
+                })
+        
+        return cleaned_data
 
