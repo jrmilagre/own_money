@@ -2,6 +2,7 @@ from django import forms
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from decimal import Decimal
+import json
 from .models import Account, Transaction, CreditCard, Beneficiary, Category
 from .forms import AccountForm, TransactionForm, TransferTransactionForm, CompositeTransactionForm
 
@@ -380,12 +381,17 @@ def transaction_update(request, transaction_id):
     """
     Atualiza uma transação existente.
     Redireciona para transfer_update se for uma transferência.
+    Redireciona para composite_transaction_update se for uma transação composta.
     """
     transaction = get_object_or_404(Transaction, id=transaction_id)
     
     # Se for uma transferência, redireciona para o formulário específico
     if transaction.operation_type == 'transfer' or transaction.parent_type == 'transfer_pair':
         return redirect('finance:transfer_update', transaction_id=transaction_id)
+    
+    # Se for uma transação composta, redireciona para o formulário específico
+    if transaction.parent_type == 'composite' or transaction.child_transactions.filter(parent_type='composite').exists():
+        return redirect('finance:composite_transaction_update', transaction_id=transaction_id)
     
     if request.method == 'POST':
         form = TransactionForm(request.POST, instance=transaction)
@@ -408,12 +414,17 @@ def transaction_delete(request, transaction_id):
     """
     Deleta uma transação.
     Redireciona para transfer_delete se for uma transferência.
+    Redireciona para composite_transaction_delete se for uma transação composta.
     """
     transaction = get_object_or_404(Transaction, id=transaction_id)
     
     # Se for uma transferência, redireciona para o handler específico
     if transaction.operation_type == 'transfer' or transaction.parent_type == 'transfer_pair':
         return redirect('finance:transfer_delete', transaction_id=transaction_id)
+    
+    # Se for uma transação composta, redireciona para o handler específico
+    if transaction.parent_type == 'composite' or transaction.child_transactions.filter(parent_type='composite').exists():
+        return redirect('finance:composite_transaction_delete', transaction_id=transaction_id)
     
     if request.method == 'POST':
         transaction.delete()
@@ -586,3 +597,242 @@ def composite_transaction_create(request):
     }
     
     return render(request, 'finance/composite_transaction_form.html', context)
+
+
+def composite_transaction_update(request, transaction_id):
+    """
+    Edita uma transação composta, atualizando todas as transações relacionadas.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    # Identifica a transação pai
+    if transaction.parent_type == 'composite':
+        # É uma transação filha, busca a pai
+        parent_transaction = transaction.parent_transaction
+    elif transaction.child_transactions.filter(parent_type='composite').exists():
+        # É a transação pai
+        parent_transaction = transaction
+    else:
+        messages.error(request, 'Transação não é uma transação composta válida.')
+        return redirect('finance:transactions_list')
+    
+    # Busca todas as transações filhas (excluindo transferências de crédito que são identificadas separadamente)
+    child_transactions = parent_transaction.child_transactions.filter(parent_type='composite').order_by('id')
+    
+    lines_data_json = '[]'  # Inicializa como JSON vazio
+    form = None
+    
+    if request.method == 'POST':
+        form = CompositeTransactionForm(request.POST)
+        if form.is_valid():
+            account = form.cleaned_data['account']
+            buy_date = form.cleaned_data['buy_date']
+            pay_date = form.cleaned_data.get('pay_date')
+            lines = form.cleaned_data['lines']
+            
+            # Determina status baseado em pay_date
+            status = 'pago' if pay_date else 'pendente'
+            
+            # Deleta todas as transações antigas (pai e filhas)
+            # Primeiro deleta as filhas para evitar problemas de CASCADE
+            for child in child_transactions:
+                child.delete()
+            parent_transaction.delete()
+            
+            # Cria novas transações seguindo a mesma lógica do create
+            new_parent_transaction = None
+            transaction_count = 0
+            
+            for i, line in enumerate(lines):
+                # Determina operation_type baseado no tipo de linha
+                if line['line_type'] == 'transfer':
+                    operation_type = 'transfer'
+                    transaction_type = 'DB'
+                else:
+                    operation_type = 'simple'
+                    transaction_type = line['transaction_type']
+                
+                # Cria a transação principal
+                transaction = Transaction.objects.create(
+                    account=account,
+                    destination_account=line['destination_account'],
+                    transaction_type=transaction_type,
+                    operation_type=operation_type,
+                    value=Decimal(str(line['value'])),
+                    category=line['category'],
+                    description=line['description'],
+                    buy_date=buy_date,
+                    pay_date=pay_date,
+                    status=status
+                )
+                
+                # Primeira transação é a pai, demais são filhas
+                if transaction_count == 0:
+                    new_parent_transaction = transaction
+                else:
+                    transaction.parent_transaction = new_parent_transaction
+                    transaction.parent_type = 'composite'
+                    transaction.save()
+                
+                transaction_count += 1
+                
+                # Se for transferência, cria também a transação de crédito na conta de destino
+                if line['line_type'] == 'transfer' and line['destination_account']:
+                    destination_account = line['destination_account']
+                    credit_description = line['description'] or f'Transferência de {account.name}'
+                    
+                    credit_transaction = Transaction.objects.create(
+                        account=destination_account,
+                        destination_account=account,
+                        transaction_type='CR',
+                        operation_type='transfer',
+                        value=Decimal(str(line['value'])),
+                        category=None,
+                        description=credit_description,
+                        buy_date=buy_date,
+                        pay_date=pay_date,
+                        status=status,
+                        parent_transaction=new_parent_transaction,
+                        parent_type='composite'
+                    )
+                    transaction_count += 1
+            
+            messages.success(
+                request,
+                f'Transação composta com {transaction_count} transação(ões) atualizada(s) com sucesso!'
+            )
+            return redirect('finance:transactions_list')
+    
+    if form is None or not form.is_valid():
+        # GET ou POST com form inválido - preenche com dados existentes
+        # Preenche o formulário com os dados existentes
+        # Agrupa transações: filhas diretas + transferências de crédito relacionadas
+        lines_data = []
+        
+        # Processa transações filhas diretas (não são transferências de crédito)
+        for child in child_transactions:
+            # Ignora transações de crédito de transferências (serão processadas junto com a débito)
+            if child.operation_type == 'transfer' and child.transaction_type == 'CR':
+                continue
+            
+            # Determina o tipo de linha
+            if child.operation_type == 'transfer':
+                line_type = 'transfer'
+            else:
+                line_type = 'normal'
+            
+            lines_data.append({
+                'value': float(child.value),
+                'transaction_type': child.transaction_type,
+                'line_type': line_type,
+                'category': child.category,
+                'destination_account': child.destination_account,
+                'description': child.description or '',
+            })
+        
+        # Adiciona a transação pai como primeira linha
+        if parent_transaction.operation_type == 'transfer':
+            line_type = 'transfer'
+        else:
+            line_type = 'normal'
+        
+        parent_line = {
+            'value': float(parent_transaction.value),
+            'transaction_type': parent_transaction.transaction_type,
+            'line_type': line_type,
+            'category': parent_transaction.category,
+            'destination_account': parent_transaction.destination_account,
+            'description': parent_transaction.description or '',
+        }
+        lines_data.insert(0, parent_line)
+        
+        # Serializa os dados para JSON (converte objetos para IDs)
+        lines_data_json = []
+        for line in lines_data:
+            lines_data_json.append({
+                'value': line['value'],
+                'transaction_type': line['transaction_type'],
+                'line_type': line['line_type'],
+                'category_id': line['category'].id if line['category'] else None,
+                'destination_account_id': line['destination_account'].id if line['destination_account'] else None,
+                'description': line['description'],
+            })
+        
+        initial_data = {
+            'account': parent_transaction.account,
+            'buy_date': parent_transaction.buy_date,
+            'pay_date': parent_transaction.pay_date,
+        }
+        form = CompositeTransactionForm(initial=initial_data)
+        # Converte para JSON string - será usado diretamente no template JavaScript
+        lines_data_json = json.dumps(lines_data_json, ensure_ascii=False)
+    
+    # Prepara dados para o template
+    categories = Category.objects.all().order_by('category', 'subcategory')
+    accounts = Account.objects.filter(is_closed=False).order_by('name')
+    
+    context = {
+        'form': form,
+        'categories': categories,
+        'accounts': accounts,
+        'transaction': parent_transaction if request.method == 'GET' else None,
+        'is_edit': True,
+        'existing_lines_json': lines_data_json,
+    }
+    
+    return render(request, 'finance/composite_transaction_form.html', context)
+
+
+def composite_transaction_delete(request, transaction_id):
+    """
+    Deleta uma transação composta, removendo todas as transações relacionadas.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    # Identifica a transação pai
+    if transaction.parent_type == 'composite':
+        # É uma transação filha, busca a pai
+        parent_transaction = transaction.parent_transaction
+    elif transaction.child_transactions.filter(parent_type='composite').exists():
+        # É a transação pai
+        parent_transaction = transaction
+    else:
+        messages.error(request, 'Transação não é uma transação composta válida.')
+        return redirect('finance:transactions_list')
+    
+    # Conta quantas transações serão deletadas
+    child_count = parent_transaction.child_transactions.filter(parent_type='composite').count()
+    total_count = child_count + 1  # +1 para a transação pai
+    
+    # Calcula o saldo líquido
+    net_balance = Decimal('0')
+    if parent_transaction.transaction_type == 'CR':
+        net_balance += parent_transaction.value
+    else:
+        net_balance -= parent_transaction.value
+    
+    for child in parent_transaction.child_transactions.filter(parent_type='composite'):
+        if child.transaction_type == 'CR':
+            net_balance += child.value
+        else:
+            net_balance -= child.value
+    
+    if request.method == 'POST':
+        # Deleta a transação pai (que vai cascatear as filhas via CASCADE)
+        parent_transaction.delete()
+        messages.success(
+            request,
+            f'Transação composta com {total_count} transação(ões) deletada(s) com sucesso!'
+        )
+        return redirect('finance:transactions_list')
+    
+    context = {
+        'transaction': parent_transaction,
+        'account': parent_transaction.account,
+        'buy_date': parent_transaction.buy_date,
+        'total_count': total_count,
+        'net_balance': net_balance,
+        'net_balance_abs': abs(net_balance),  # Valor absoluto para exibição
+    }
+    
+    return render(request, 'finance/composite_transaction_delete.html', context)

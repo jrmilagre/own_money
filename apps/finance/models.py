@@ -323,6 +323,10 @@ class Transaction(BaseModel):
         desc = self.description or f"Transação #{self.id}"
         return f"{desc} - {self.value} ({self.get_transaction_type_display()})"
     
+    def is_composite_parent(self):
+        """Verifica se esta transação é pai de uma transação composta."""
+        return self.child_transactions.filter(parent_type='composite').exists()
+    
     def save(self, *args, **kwargs):
         # Define status automaticamente baseado em pay_date
         if self.pay_date:

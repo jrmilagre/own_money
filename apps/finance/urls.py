@@ -19,8 +19,10 @@ urlpatterns = [
     path('transactions/create/composite/', views.composite_transaction_create, name='composite_transaction_create'),
     path('transactions/<int:transaction_id>/update/', views.transaction_update, name='transaction_update'),
     path('transactions/<int:transaction_id>/update/transfer/', views.transfer_update, name='transfer_update'),
+    path('transactions/<int:transaction_id>/update/composite/', views.composite_transaction_update, name='composite_transaction_update'),
     path('transactions/<int:transaction_id>/delete/', views.transaction_delete, name='transaction_delete'),
     path('transactions/<int:transaction_id>/delete/transfer/', views.transfer_delete, name='transfer_delete'),
+    path('transactions/<int:transaction_id>/delete/composite/', views.composite_transaction_delete, name='composite_transaction_delete'),
     path('account/<int:account_id>/statement/', views.account_statement, name='account_statement'),
 ]
 

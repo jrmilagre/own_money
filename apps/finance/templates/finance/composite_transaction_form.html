@@ -1,9 +1,9 @@
 {% extends 'finance/base.html' %}
 
-{% block title %}Nova Transação Composta - Finanças{% endblock %}
+{% block title %}{% if is_edit %}Editar{% else %}Nova{% endif %} Transação Composta - Finanças{% endblock %}
 
 {% block content %}
-    <h1>Nova Transação Composta</h1>
+    <h1>{% if is_edit %}Editar{% else %}Nova{% endif %} Transação Composta</h1>
     
     {% if messages %}
     <div>
@@ -84,11 +84,17 @@
         
         <div style="margin-top: 20px;">
             <button type="submit" style="padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                Criar Transação Composta
+                {% if is_edit %}Atualizar{% else %}Criar{% endif %} Transação Composta
             </button>
+            {% if is_edit %}
+            <a href="{% url 'finance:transactions_list' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancelar
+            </a>
+            {% else %}
             <a href="{% url 'finance:transaction_type_select' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
                 Cancelar
             </a>
+            {% endif %}
         </div>
     </form>
     
@@ -176,7 +182,7 @@
             }
         }
         
-        function addLine() {
+        function addLine(lineData = null) {
             const tbody = document.getElementById('lines-tbody');
             const lineIndex = lineCounter++;
             
@@ -185,20 +191,20 @@
             lineRow.innerHTML = `
                 <td style="padding: 8px; border: 1px solid #ddd;">
                     <input type="number" name="line_${lineIndex}_value" step="0.01" min="0.01" 
-                           class="form-control" style="width: 120px;" required>
+                           class="form-control" style="width: 120px;" required value="${lineData ? lineData.value : ''}">
                 </td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
                     <select name="line_${lineIndex}_transaction_type" class="form-control transaction-type-select" required>
                         <option value="">Selecione</option>
-                        <option value="CR">Crédito</option>
-                        <option value="DB">Débito</option>
+                        <option value="CR" ${lineData && lineData.transaction_type === 'CR' ? 'selected' : ''}>Crédito</option>
+                        <option value="DB" ${lineData && lineData.transaction_type === 'DB' ? 'selected' : ''}>Débito</option>
                     </select>
                 </td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
                     <select name="line_${lineIndex}_line_type" class="form-control line-type-select" required>
                         <option value="">Selecione</option>
-                        <option value="normal">Normal</option>
-                        <option value="transfer">Transferência</option>
+                        <option value="normal" ${lineData && lineData.line_type === 'normal' ? 'selected' : ''}>Normal</option>
+                        <option value="transfer" ${lineData && lineData.line_type === 'transfer' ? 'selected' : ''}>Transferência</option>
                     </select>
                 </td>
                 <td class="category-cell" style="padding: 8px; border: 1px solid #ddd;">
@@ -219,7 +225,7 @@
                 </td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
                     <input type="text" name="line_${lineIndex}_description" 
-                           class="form-control" placeholder="Descrição (opcional)" maxlength="500" style="width: 200px;">
+                           class="form-control" placeholder="Descrição (opcional)" maxlength="500" style="width: 200px;" value="${lineData ? (lineData.description || '') : ''}">
                 </td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
                     <button type="button" class="remove-line-btn" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
@@ -245,14 +251,62 @@
             });
             
             tbody.appendChild(lineRow);
+            
+            // Se tiver dados, preenche os valores e aplica toggle
+            if (lineData) {
+                // Preenche categoria se houver
+                if (lineData.category_id) {
+                    const categorySelect = lineRow.querySelector('select[name*="_category"]');
+                    if (categorySelect) {
+                        categorySelect.value = lineData.category_id;
+                    }
+                }
+                
+                // Preenche conta de destino se houver
+                if (lineData.destination_account_id) {
+                    const destAccountSelect = lineRow.querySelector('select[name*="_destination_account"]');
+                    if (destAccountSelect) {
+                        destAccountSelect.value = lineData.destination_account_id;
+                    }
+                }
+                
+                // Aplica toggle para mostrar/esconder campos corretos
+                toggleLineFields(lineRow);
+            }
         }
         
         document.addEventListener('DOMContentLoaded', function() {
             const addBtn = document.getElementById('add-line-btn');
-            addBtn.addEventListener('click', addLine);
+            addBtn.addEventListener('click', function() {
+                addLine();
+            });
             
-            // Adiciona uma linha inicial
+            // Se estiver em modo edição, preenche as linhas existentes
+            {% if is_edit and existing_lines_json %}
+            try {
+                // existing_lines_json já é uma string JSON do Python, precisa ser parseado
+                const existingLinesJsonString = '{{ existing_lines_json|escapejs }}';
+                const existingLines = JSON.parse(existingLinesJsonString);
+                console.log('Linhas carregadas:', existingLines);
+                if (Array.isArray(existingLines) && existingLines.length > 0) {
+                    existingLines.forEach(function(lineData) {
+                        addLine(lineData);
+                    });
+                } else {
+                    console.warn('Nenhuma linha encontrada ou array vazio');
+                    addLine();
+                }
+            } catch (e) {
+                console.error('Erro ao carregar linhas existentes:', e, 'JSON:', '{{ existing_lines_json|escapejs }}');
+                addLine();
+            }
+            {% else %}
+            // Adiciona uma linha inicial apenas se não estiver editando
             addLine();
+            {% endif %}
+            
+            // Calcula saldo inicial
+            calculateNetBalance();
         });
     </script>
 {% endblock %}
