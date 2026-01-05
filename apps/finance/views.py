@@ -1,8 +1,9 @@
 from django import forms
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
+from decimal import Decimal
 from .models import Account, Transaction, CreditCard, Beneficiary, Category
-from .forms import AccountForm, TransactionForm, TransferTransactionForm
+from .forms import AccountForm, TransactionForm, TransferTransactionForm, CompositeTransactionForm
 
 
 def finance_home(request):
@@ -489,3 +490,99 @@ def account_statement(request, account_id):
     }
     
     return render(request, 'finance/account_statement.html', context)
+
+
+def composite_transaction_create(request):
+    """
+    Cria uma transação composta com múltiplas linhas.
+    A primeira transação será a "pai" e as demais serão filhas com parent_type='composite'.
+    """
+    if request.method == 'POST':
+        form = CompositeTransactionForm(request.POST)
+        if form.is_valid():
+            account = form.cleaned_data['account']
+            buy_date = form.cleaned_data['buy_date']
+            pay_date = form.cleaned_data.get('pay_date')
+            lines = form.cleaned_data['lines']
+            
+            # Determina status baseado em pay_date
+            status = 'pago' if pay_date else 'pendente'
+            
+            # Cria a primeira transação como "pai"
+            parent_transaction = None
+            transaction_count = 0
+            
+            for i, line in enumerate(lines):
+                # Determina operation_type baseado no tipo de linha
+                if line['line_type'] == 'transfer':
+                    operation_type = 'transfer'
+                    # Para transferências, sempre cria débito na conta principal
+                    transaction_type = 'DB'
+                else:
+                    operation_type = 'simple'
+                    transaction_type = line['transaction_type']
+                
+                # Cria a transação principal (débito ou crédito na conta compartilhada)
+                transaction = Transaction.objects.create(
+                    account=account,
+                    destination_account=line['destination_account'],
+                    transaction_type=transaction_type,
+                    operation_type=operation_type,
+                    value=Decimal(str(line['value'])),
+                    category=line['category'],
+                    description=line['description'],
+                    buy_date=buy_date,
+                    pay_date=pay_date,
+                    status=status
+                )
+                
+                # Primeira transação é a pai, demais são filhas
+                if transaction_count == 0:
+                    parent_transaction = transaction
+                else:
+                    transaction.parent_transaction = parent_transaction
+                    transaction.parent_type = 'composite'
+                    transaction.save()
+                
+                transaction_count += 1
+                
+                # Se for transferência, cria também a transação de crédito na conta de destino
+                if line['line_type'] == 'transfer' and line['destination_account']:
+                    destination_account = line['destination_account']
+                    credit_description = line['description'] or f'Transferência de {account.name}'
+                    
+                    credit_transaction = Transaction.objects.create(
+                        account=destination_account,
+                        destination_account=account,
+                        transaction_type='CR',
+                        operation_type='transfer',
+                        value=Decimal(str(line['value'])),
+                        category=None,
+                        description=credit_description,
+                        buy_date=buy_date,
+                        pay_date=pay_date,
+                        status=status,
+                        parent_transaction=parent_transaction,
+                        parent_type='composite'
+                    )
+                    transaction_count += 1
+            
+            messages.success(
+                request,
+                f'Transação composta com {transaction_count} transação(ões) criada(s) com sucesso!'
+            )
+            return redirect('finance:transactions_list')
+    else:
+        form = CompositeTransactionForm()
+    
+    # Prepara dados para o template (categorias e contas para os selects)
+    categories = Category.objects.all().order_by('category', 'subcategory')
+    accounts = Account.objects.filter(is_closed=False).order_by('name')
+    
+    context = {
+        'form': form,
+        'categories': categories,
+        'accounts': accounts,
+    }
+    
+    return render(request, 'finance/composite_transaction_form.html', context)

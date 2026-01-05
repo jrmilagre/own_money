@@ -1,0 +1,258 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Nova Transação Composta - Finanças{% endblock %}
+
+{% block content %}
+    <h1>Nova Transação Composta</h1>
+    
+    {% if messages %}
+    <div>
+        {% for message in messages %}
+        <div>{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    {% if form.non_field_errors %}
+    <div style="color: red; margin-bottom: 15px;">
+        {% for error in form.non_field_errors %}
+        <div>{{ error }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <form method="post" id="composite-form">
+        {% csrf_token %}
+        
+        <div style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+            <h2>Informações Compartilhadas</h2>
+            
+            <div style="margin-bottom: 15px;">
+                <label for="{{ form.account.id_for_label }}">{{ form.account.label }}</label>
+                {{ form.account }}
+                {% if form.account.errors %}
+                    <div style="color: red;">{{ form.account.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label for="{{ form.buy_date.id_for_label }}">{{ form.buy_date.label }}</label>
+                {{ form.buy_date }}
+                {% if form.buy_date.errors %}
+                    <div style="color: red;">{{ form.buy_date.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label for="{{ form.pay_date.id_for_label }}">{{ form.pay_date.label }}</label>
+                {{ form.pay_date }}
+                {% if form.pay_date.errors %}
+                    <div style="color: red;">{{ form.pay_date.errors }}</div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h2>Linhas de Transação</h2>
+            <button type="button" id="add-line-btn" style="padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 15px;">
+                + Adicionar Linha
+            </button>
+            
+            <div id="lines-container">
+                <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Valor</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Tipo</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Tipo de Linha</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Categoria</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Conta Destino</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Descrição</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lines-tbody">
+                        <!-- Linhas serão adicionadas aqui via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 15px; background-color: #e7f3ff; border-radius: 5px;">
+                <strong>Saldo Líquido: <span id="net-balance">R$ 0,00</span></strong>
+            </div>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <button type="submit" style="padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Criar Transação Composta
+            </button>
+            <a href="{% url 'finance:transaction_type_select' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancelar
+            </a>
+        </div>
+    </form>
+    
+    <script>
+        let lineCounter = 0;
+        
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+        
+        function calculateNetBalance() {
+            let total = 0;
+            const lines = document.querySelectorAll('.transaction-line');
+            
+            lines.forEach(line => {
+                const valueInput = line.querySelector('input[name*="_value"]');
+                const typeSelect = line.querySelector('select[name*="_transaction_type"]');
+                
+                if (valueInput && typeSelect && valueInput.value) {
+                    const value = parseFloat(valueInput.value) || 0;
+                    const type = typeSelect.value;
+                    
+                    if (type === 'CR') {
+                        total += value;
+                    } else if (type === 'DB') {
+                        total -= value;
+                    }
+                }
+            });
+            
+            document.getElementById('net-balance').textContent = formatCurrency(total);
+        }
+        
+        function toggleLineFields(lineElement) {
+            const lineTypeSelect = lineElement.querySelector('select[name*="_line_type"]');
+            const categoryCell = lineElement.querySelector('.category-cell');
+            const destinationAccountCell = lineElement.querySelector('.destination-account-cell');
+            const transactionTypeSelect = lineElement.querySelector('.transaction-type-select');
+            
+            if (lineTypeSelect) {
+                const lineType = lineTypeSelect.value;
+                
+                if (lineType === 'transfer') {
+                    if (categoryCell) categoryCell.style.display = 'none';
+                    if (destinationAccountCell) destinationAccountCell.style.display = 'table-cell';
+                    // Para transferências, sempre é débito na conta principal
+                    if (transactionTypeSelect) {
+                        transactionTypeSelect.value = 'DB';
+                        transactionTypeSelect.style.backgroundColor = '#e9ecef';
+                        transactionTypeSelect.style.cursor = 'not-allowed';
+                        transactionTypeSelect.disabled = true;
+                        // Cria input hidden para garantir que o valor seja enviado (campos disabled não são enviados)
+                        const hiddenName = transactionTypeSelect.name;
+                        let hiddenInput = lineElement.querySelector(`input[name="${hiddenName}"]`);
+                        if (!hiddenInput) {
+                            hiddenInput = document.createElement('input');
+                            hiddenInput.type = 'hidden';
+                            hiddenInput.name = hiddenName;
+                            hiddenInput.value = 'DB';
+                            lineElement.appendChild(hiddenInput);
+                        } else {
+                            hiddenInput.value = 'DB';
+                        }
+                    }
+                } else {
+                    if (categoryCell) categoryCell.style.display = 'table-cell';
+                    if (destinationAccountCell) destinationAccountCell.style.display = 'none';
+                    // Para transações normais, permite escolher o tipo
+                    if (transactionTypeSelect) {
+                        transactionTypeSelect.style.backgroundColor = '';
+                        transactionTypeSelect.style.cursor = '';
+                        transactionTypeSelect.disabled = false;
+                        // Remove o input hidden se existir
+                        const hiddenName = transactionTypeSelect.name;
+                        const hiddenInput = lineElement.querySelector(`input[name="${hiddenName}"]`);
+                        if (hiddenInput && hiddenInput.type === 'hidden') {
+                            hiddenInput.remove();
+                        }
+                    }
+                }
+                calculateNetBalance();
+            }
+        }
+        
+        function addLine() {
+            const tbody = document.getElementById('lines-tbody');
+            const lineIndex = lineCounter++;
+            
+            const lineRow = document.createElement('tr');
+            lineRow.className = 'transaction-line';
+            lineRow.innerHTML = `
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <input type="number" name="line_${lineIndex}_value" step="0.01" min="0.01" 
+                           class="form-control" style="width: 120px;" required>
+                </td>
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <select name="line_${lineIndex}_transaction_type" class="form-control transaction-type-select" required>
+                        <option value="">Selecione</option>
+                        <option value="CR">Crédito</option>
+                        <option value="DB">Débito</option>
+                    </select>
+                </td>
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <select name="line_${lineIndex}_line_type" class="form-control line-type-select" required>
+                        <option value="">Selecione</option>
+                        <option value="normal">Normal</option>
+                        <option value="transfer">Transferência</option>
+                    </select>
+                </td>
+                <td class="category-cell" style="padding: 8px; border: 1px solid #ddd;">
+                    <select name="line_${lineIndex}_category" class="form-control">
+                        <option value="">Selecione</option>
+                        {% for category in categories %}
+                        <option value="{{ category.id }}">{{ category.category }} - {{ category.subcategory }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td class="destination-account-cell" style="padding: 8px; border: 1px solid #ddd; display: none;">
+                    <select name="line_${lineIndex}_destination_account" class="form-control">
+                        <option value="">Selecione</option>
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <input type="text" name="line_${lineIndex}_description" 
+                           class="form-control" placeholder="Descrição (opcional)" maxlength="500" style="width: 200px;">
+                </td>
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <button type="button" class="remove-line-btn" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        Remover
+                    </button>
+                </td>
+            `;
+            
+            // Adiciona event listeners
+            const valueInput = lineRow.querySelector('input[name*="_value"]');
+            const typeSelect = lineRow.querySelector('select[name*="_transaction_type"]');
+            const lineTypeSelect = lineRow.querySelector('.line-type-select');
+            const removeBtn = lineRow.querySelector('.remove-line-btn');
+            
+            valueInput.addEventListener('input', calculateNetBalance);
+            typeSelect.addEventListener('change', calculateNetBalance);
+            lineTypeSelect.addEventListener('change', function() {
+                toggleLineFields(lineRow);
+            });
+            removeBtn.addEventListener('click', function() {
+                lineRow.remove();
+                calculateNetBalance();
+            });
+            
+            tbody.appendChild(lineRow);
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const addBtn = document.getElementById('add-line-btn');
+            addBtn.addEventListener('click', addLine);
+            
+            // Adiciona uma linha inicial
+            addLine();
+        });
+    </script>
+{% endblock %}

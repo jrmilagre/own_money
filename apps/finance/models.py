@@ -140,6 +140,7 @@ class Transaction(BaseModel):
         ('split', 'Rateio'),
         ('recurring', 'Recorrência'),
         ('transfer_pair', 'Par de transferência'),
+        ('composite', 'Transação composta'),
     ]
     
     parent_transaction = models.ForeignKey(

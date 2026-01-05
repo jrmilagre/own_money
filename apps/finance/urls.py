@@ -16,6 +16,7 @@ urlpatterns = [
     path('transactions/create/', views.transaction_type_select, name='transaction_type_select'),
     path('transactions/create/simple/', views.transaction_create, name='transaction_create'),
     path('transactions/create/transfer/', views.transfer_create, name='transfer_create'),
+    path('transactions/create/composite/', views.composite_transaction_create, name='composite_transaction_create'),
     path('transactions/<int:transaction_id>/update/', views.transaction_update, name='transaction_update'),
     path('transactions/<int:transaction_id>/update/transfer/', views.transfer_update, name='transfer_update'),
     path('transactions/<int:transaction_id>/delete/', views.transaction_delete, name='transaction_delete'),

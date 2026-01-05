@@ -22,9 +22,12 @@
             <table border="1">
                 <thead>
                     <tr>
+                        <th>ID</th>
                         <th>Data</th>
                         <th>Descrição</th>
                         <th>Conta</th>
+                        <th>Categoria</th>
+                        <th>Subcategoria</th>
                         <th>Tipo</th>
                         <th>Valor</th>
                         <th>Status</th>
@@ -39,12 +42,15 @@
                         {% comment %}É a transação de crédito (destino) - usa a pai para ações{% endcomment %}
                         {% with parent_transaction=transaction.parent_transaction %}
                     <tr style="opacity: 0.7;">
+                        <td>{{ transaction.id }}</td>
                         <td>{{ transaction.buy_date|date:"d/m/Y" }}</td>
                         <td>
                             {{ transaction.description|default:"-" }}
                             <span style="font-size: 0.8em; color: #666;">(transferência)</span>
                         </td>
                         <td>{{ transaction.account.name }}</td>
+                        <td>{{ transaction.category.category|default:"-" }}</td>
+                        <td>{{ transaction.category.subcategory|default:"-" }}</td>
                         <td>{{ transaction.get_transaction_type_display }}</td>
                         <td>
                             {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
@@ -60,12 +66,15 @@
                     {% else %}
                         {% comment %}É a transação de débito (origem){% endcomment %}
                     <tr>
+                        <td>{{ transaction.id }}</td>
                         <td>{{ transaction.buy_date|date:"d/m/Y" }}</td>
                         <td>
                             {{ transaction.description|default:"-" }}
                             <span style="font-size: 0.8em; color: #007bff;">↔ Transferência</span>
                         </td>
                         <td>{{ transaction.account.name }}</td>
+                        <td>{{ transaction.category.category|default:"-" }}</td>
+                        <td>{{ transaction.category.subcategory|default:"-" }}</td>
                         <td>{{ transaction.get_transaction_type_display }}</td>
                         <td>
                             {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
@@ -81,9 +90,12 @@
                     {% else %}
                     {% comment %}Transação normal{% endcomment %}
                     <tr>
+                        <td>{{ transaction.id }}</td>
                         <td>{{ transaction.buy_date|date:"d/m/Y" }}</td>
                         <td>{{ transaction.description|default:"-" }}</td>
                         <td>{{ transaction.account.name }}</td>
+                        <td>{{ transaction.category.category|default:"-" }}</td>
+                        <td>{{ transaction.category.subcategory|default:"-" }}</td>
                         <td>{{ transaction.get_transaction_type_display }}</td>
                         <td>
                             {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
