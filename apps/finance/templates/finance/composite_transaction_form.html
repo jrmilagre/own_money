@@ -62,11 +62,11 @@
                 <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
                     <thead>
                         <tr style="background-color: #f8f9fa;">
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Valor</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Transferência</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Categoria / Conta Destino</th>
                             <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Tipo</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Tipo de Linha</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Categoria</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Conta Destino</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Valor</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Cartão de Crédito</th>
                             <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Descrição</th>
                             <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Ações</th>
                         </tr>
@@ -101,6 +101,18 @@
     <script>
         let lineCounter = 0;
         
+        // Cartões agrupados por conta
+        const creditCardsByAccountFixed = {};
+        {% for credit_card in credit_cards %}
+        if (!creditCardsByAccountFixed[{{ credit_card.account.id }}]) {
+            creditCardsByAccountFixed[{{ credit_card.account.id }}] = [];
+        }
+        creditCardsByAccountFixed[{{ credit_card.account.id }}].push({
+            id: {{ credit_card.id }},
+            name: '{{ credit_card.cardholder|escapejs }} - {{ credit_card.card_number|escapejs }} ({{ credit_card.account.name|escapejs }})'
+        });
+        {% endfor %}
+        
         function formatCurrency(value) {
             return new Intl.NumberFormat('pt-BR', {
                 style: 'currency',
@@ -131,18 +143,56 @@
             document.getElementById('net-balance').textContent = formatCurrency(total);
         }
         
+        function updateCreditCardSelects(accountId) {
+            if (!accountId) {
+                return;
+            }
+            
+            // Converte accountId para número para garantir correspondência com as chaves do objeto
+            const accountIdNum = parseInt(accountId, 10);
+            const creditCardSelects = document.querySelectorAll('.credit-card-select');
+            const cards = creditCardsByAccountFixed[accountIdNum] || [];
+            
+            creditCardSelects.forEach(select => {
+                const currentValue = select.value;
+                // Limpa opções exceto a primeira (Selecione)
+                while (select.options.length > 1) {
+                    select.remove(1);
+                }
+                
+                // Adiciona cartões da conta selecionada
+                cards.forEach(card => {
+                    const option = document.createElement('option');
+                    option.value = card.id;
+                    option.textContent = card.name;
+                    select.appendChild(option);
+                });
+                
+                // Restaura valor anterior se ainda existir
+                if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
+                    select.value = currentValue;
+                } else {
+                    select.value = '';
+                }
+                
+                // Atualiza data-account-id
+                select.setAttribute('data-account-id', accountId);
+            });
+        }
+        
         function toggleLineFields(lineElement) {
-            const lineTypeSelect = lineElement.querySelector('select[name*="_line_type"]');
-            const categoryCell = lineElement.querySelector('.category-cell');
-            const destinationAccountCell = lineElement.querySelector('.destination-account-cell');
+            const transferCheckbox = lineElement.querySelector('input[name*="_is_transfer"]');
+            const categorySelect = lineElement.querySelector('.category-select');
+            const destinationAccountSelect = lineElement.querySelector('.destination-account-select');
             const transactionTypeSelect = lineElement.querySelector('.transaction-type-select');
             
-            if (lineTypeSelect) {
-                const lineType = lineTypeSelect.value;
+            if (transferCheckbox) {
+                const isTransfer = transferCheckbox.checked;
                 
-                if (lineType === 'transfer') {
-                    if (categoryCell) categoryCell.style.display = 'none';
-                    if (destinationAccountCell) destinationAccountCell.style.display = 'table-cell';
+                if (isTransfer) {
+                    // Mostra conta destino, esconde categoria
+                    if (categorySelect) categorySelect.style.display = 'none';
+                    if (destinationAccountSelect) destinationAccountSelect.style.display = 'block';
                     // Para transferências, sempre é débito na conta principal
                     if (transactionTypeSelect) {
                         transactionTypeSelect.value = 'DB';
@@ -163,8 +213,9 @@
                         }
                     }
                 } else {
-                    if (categoryCell) categoryCell.style.display = 'table-cell';
-                    if (destinationAccountCell) destinationAccountCell.style.display = 'none';
+                    // Mostra categoria, esconde conta destino
+                    if (categorySelect) categorySelect.style.display = 'block';
+                    if (destinationAccountSelect) destinationAccountSelect.style.display = 'none';
                     // Para transações normais, permite escolher o tipo
                     if (transactionTypeSelect) {
                         transactionTypeSelect.style.backgroundColor = '';
@@ -189,9 +240,25 @@
             const lineRow = document.createElement('tr');
             lineRow.className = 'transaction-line';
             lineRow.innerHTML = `
-                <td style="padding: 8px; border: 1px solid #ddd;">
-                    <input type="number" name="line_${lineIndex}_value" step="0.01" min="0.01" 
-                           class="form-control" style="width: 120px;" required value="${lineData ? lineData.value : ''}">
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                    <input type="checkbox" name="line_${lineIndex}_is_transfer" class="transfer-checkbox" 
+                           ${lineData && lineData.line_type === 'transfer' ? 'checked' : ''}>
+                </td>
+                <td class="category-cell" style="padding: 8px; border: 1px solid #ddd;">
+                    <div>
+                        <select name="line_${lineIndex}_category" class="form-control category-select">
+                            <option value="">Selecione</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}" data-default-type="{{ category.default_transaction_type }}">{{ category.category }} - {{ category.subcategory }}</option>
+                            {% endfor %}
+                        </select>
+                        <select name="line_${lineIndex}_destination_account" class="form-control destination-account-select" style="display: none;">
+                            <option value="">Selecione</option>
+                            {% for account in accounts %}
+                            <option value="{{ account.id }}">{{ account.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
                     <select name="line_${lineIndex}_transaction_type" class="form-control transaction-type-select" required>
@@ -201,26 +268,12 @@
                     </select>
                 </td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
-                    <select name="line_${lineIndex}_line_type" class="form-control line-type-select" required>
-                        <option value="">Selecione</option>
-                        <option value="normal" ${lineData && lineData.line_type === 'normal' ? 'selected' : ''}>Normal</option>
-                        <option value="transfer" ${lineData && lineData.line_type === 'transfer' ? 'selected' : ''}>Transferência</option>
-                    </select>
+                    <input type="number" name="line_${lineIndex}_value" step="0.01" min="0.01" 
+                           class="form-control" style="width: 120px;" required value="${lineData ? lineData.value : ''}">
                 </td>
-                <td class="category-cell" style="padding: 8px; border: 1px solid #ddd;">
-                    <select name="line_${lineIndex}_category" class="form-control">
+                <td style="padding: 8px; border: 1px solid #ddd;">
+                    <select name="line_${lineIndex}_credit_card" class="form-control credit-card-select" data-account-id="">
                         <option value="">Selecione</option>
-                        {% for category in categories %}
-                        <option value="{{ category.id }}">{{ category.category }} - {{ category.subcategory }}</option>
-                        {% endfor %}
-                    </select>
-                </td>
-                <td class="destination-account-cell" style="padding: 8px; border: 1px solid #ddd; display: none;">
-                    <select name="line_${lineIndex}_destination_account" class="form-control">
-                        <option value="">Selecione</option>
-                        {% for account in accounts %}
-                        <option value="{{ account.id }}">{{ account.name }}</option>
-                        {% endfor %}
                     </select>
                 </td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
@@ -237,20 +290,42 @@
             // Adiciona event listeners
             const valueInput = lineRow.querySelector('input[name*="_value"]');
             const typeSelect = lineRow.querySelector('select[name*="_transaction_type"]');
-            const lineTypeSelect = lineRow.querySelector('.line-type-select');
+            const transferCheckbox = lineRow.querySelector('input[name*="_is_transfer"]');
+            const categorySelect = lineRow.querySelector('select[name*="_category"]');
             const removeBtn = lineRow.querySelector('.remove-line-btn');
             
             valueInput.addEventListener('input', calculateNetBalance);
             typeSelect.addEventListener('change', calculateNetBalance);
-            lineTypeSelect.addEventListener('change', function() {
+            transferCheckbox.addEventListener('change', function() {
                 toggleLineFields(lineRow);
             });
+            
+            // Preenche tipo automaticamente quando categoria é selecionada
+            if (categorySelect) {
+                categorySelect.addEventListener('change', function() {
+                    if (!transferCheckbox.checked && this.value) {
+                        const selectedOption = this.options[this.selectedIndex];
+                        const defaultType = selectedOption.getAttribute('data-default-type');
+                        if (defaultType && typeSelect) {
+                            typeSelect.value = defaultType;
+                            calculateNetBalance();
+                        }
+                    }
+                });
+            }
             removeBtn.addEventListener('click', function() {
                 lineRow.remove();
                 calculateNetBalance();
             });
             
             tbody.appendChild(lineRow);
+            
+            // Atualiza cartão de crédito quando linha é criada (após anexar ao DOM)
+            const accountSelect = document.getElementById('id_account');
+            if (accountSelect && accountSelect.value) {
+                // Atualiza todos os selects de cartão, incluindo o recém-criado
+                updateCreditCardSelects(accountSelect.value);
+            }
             
             // Se tiver dados, preenche os valores e aplica toggle
             if (lineData) {
@@ -270,16 +345,42 @@
                     }
                 }
                 
-                // Aplica toggle para mostrar/esconder campos corretos
+                // Aplica toggle para mostrar/esconder campos corretos baseado no checkbox
                 toggleLineFields(lineRow);
+                
+                // Preenche cartão de crédito se houver (após atualizar selects)
+                if (lineData && lineData.credit_card_id) {
+                    const accountSelect = document.getElementById('id_account');
+                    if (accountSelect && accountSelect.value) {
+                        updateCreditCardSelects(accountSelect.value);
+                        const creditCardSelect = lineRow.querySelector('select[name*="_credit_card"]');
+                        if (creditCardSelect) {
+                            creditCardSelect.value = lineData.credit_card_id;
+                        }
+                    }
+                }
             }
         }
         
         document.addEventListener('DOMContentLoaded', function() {
             const addBtn = document.getElementById('add-line-btn');
+            const accountSelect = document.getElementById('id_account');
+            
             addBtn.addEventListener('click', function() {
                 addLine();
             });
+            
+            // Atualiza cartões de crédito quando conta principal muda
+            if (accountSelect) {
+                accountSelect.addEventListener('change', function() {
+                    updateCreditCardSelects(this.value);
+                });
+                
+                // Atualiza na carga inicial se houver conta selecionada
+                if (accountSelect.value) {
+                    updateCreditCardSelects(accountSelect.value);
+                }
+            }
             
             // Se estiver em modo edição, preenche as linhas existentes
             {% if is_edit and existing_lines_json %}

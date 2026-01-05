@@ -172,9 +172,12 @@ class CompositeTransactionForm(forms.Form):
                 transaction_type_list = self.data.getlist(f'line_{i}_transaction_type')
                 if transaction_type_list:
                     transaction_type = transaction_type_list[0] if transaction_type_list else ''
-            line_type = self.data.get(f'line_{i}_line_type')
+            # Verifica se é transferência via checkbox
+            is_transfer = self.data.get(f'line_{i}_is_transfer') == 'on'
+            line_type = 'transfer' if is_transfer else 'normal'
             category_id = self.data.get(f'line_{i}_category')
             destination_account_id = self.data.get(f'line_{i}_destination_account')
+            credit_card_id = self.data.get(f'line_{i}_credit_card')
             description = self.data.get(f'line_{i}_description', '')
             
             # Valida valor
@@ -235,12 +238,22 @@ class CompositeTransactionForm(forms.Form):
                     continue
                 destination_account = None
             
+            # Processa cartão de crédito (opcional)
+            credit_card = None
+            if credit_card_id:
+                try:
+                    from .models import CreditCard
+                    credit_card = CreditCard.objects.get(id=credit_card_id)
+                except CreditCard.DoesNotExist:
+                    pass  # Ignora se não encontrar
+            
             lines.append({
                 'value': value,
                 'transaction_type': transaction_type,
                 'line_type': line_type,
                 'category': category,
                 'destination_account': destination_account,
+                'credit_card': credit_card,
                 'description': description,
             })
         

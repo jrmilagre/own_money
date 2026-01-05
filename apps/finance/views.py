@@ -589,11 +589,13 @@ def composite_transaction_create(request):
     # Prepara dados para o template (categorias e contas para os selects)
     categories = Category.objects.all().order_by('category', 'subcategory')
     accounts = Account.objects.filter(is_closed=False).order_by('name')
+    credit_cards = CreditCard.objects.filter(is_active=True).order_by('account', 'cardholder')
     
     context = {
         'form': form,
         'categories': categories,
         'accounts': accounts,
+        'credit_cards': credit_cards,
     }
     
     return render(request, 'finance/composite_transaction_form.html', context)
@@ -621,11 +623,13 @@ def composite_transaction_update(request, transaction_id):
     
     lines_data_json = '[]'  # Inicializa como JSON vazio
     form = None
+    credit_card = None  # Inicializa credit_card
     
     if request.method == 'POST':
         form = CompositeTransactionForm(request.POST)
         if form.is_valid():
             account = form.cleaned_data['account']
+            credit_card = form.cleaned_data.get('credit_card')
             buy_date = form.cleaned_data['buy_date']
             pay_date = form.cleaned_data.get('pay_date')
             lines = form.cleaned_data['lines']
@@ -653,8 +657,11 @@ def composite_transaction_update(request, transaction_id):
                     transaction_type = line['transaction_type']
                 
                 # Cria a transação principal
+                # Usa credit_card da linha se existir, senão usa o compartilhado
+                line_credit_card = line.get('credit_card') or credit_card
                 transaction = Transaction.objects.create(
                     account=account,
+                    credit_card=line_credit_card,
                     destination_account=line['destination_account'],
                     transaction_type=transaction_type,
                     operation_type=operation_type,
@@ -727,6 +734,7 @@ def composite_transaction_update(request, transaction_id):
                 'line_type': line_type,
                 'category': child.category,
                 'destination_account': child.destination_account,
+                'credit_card': child.credit_card,
                 'description': child.description or '',
             })
         
@@ -742,6 +750,7 @@ def composite_transaction_update(request, transaction_id):
             'line_type': line_type,
             'category': parent_transaction.category,
             'destination_account': parent_transaction.destination_account,
+            'credit_card': parent_transaction.credit_card,
             'description': parent_transaction.description or '',
         }
         lines_data.insert(0, parent_line)
@@ -755,6 +764,7 @@ def composite_transaction_update(request, transaction_id):
                 'line_type': line['line_type'],
                 'category_id': line['category'].id if line['category'] else None,
                 'destination_account_id': line['destination_account'].id if line['destination_account'] else None,
+                'credit_card_id': line['credit_card'].id if line['credit_card'] else None,
                 'description': line['description'],
             })
         
@@ -770,11 +780,13 @@ def composite_transaction_update(request, transaction_id):
     # Prepara dados para o template
     categories = Category.objects.all().order_by('category', 'subcategory')
     accounts = Account.objects.filter(is_closed=False).order_by('name')
+    credit_cards = CreditCard.objects.filter(is_active=True).order_by('account', 'cardholder')
     
     context = {
         'form': form,
         'categories': categories,
         'accounts': accounts,
+        'credit_cards': credit_cards,
         'transaction': parent_transaction if request.method == 'GET' else None,
         'is_edit': True,
         'existing_lines_json': lines_data_json,
