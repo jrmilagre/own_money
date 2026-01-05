@@ -135,6 +135,64 @@
                         </td>
                     </tr>
                     {% endif %}
+                    {% elif transaction.parent_type == 'recurring' %}
+                    {% comment %}Transação recorrente filha{% endcomment %}
+                    {% with parent_transaction=transaction.get_recurring_parent %}
+                    <tr style="opacity: 0.7;">
+                        <td>{{ transaction.id }}</td>
+                        <td>{{ transaction.due_date|date:"d/m/Y"|default:transaction.buy_date|date:"d/m/Y" }}</td>
+                        <td>
+                            {{ transaction.description|default:"-" }}
+                            <span style="font-size: 0.8em; color: #666;">(recorrente)</span>
+                        </td>
+                        <td>{{ transaction.account.name }}</td>
+                        <td>{{ transaction.category.category|default:"-" }}</td>
+                        <td>{{ transaction.category.subcategory|default:"-" }}</td>
+                        <td>{{ transaction.get_transaction_type_display }}</td>
+                        <td>
+                            {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
+                            R$ {{ transaction.value|floatformat:2 }}
+                        </td>
+                        <td>{{ transaction.get_status_display }}</td>
+                        <td>
+                            <a href="{% url 'finance:transaction_update' parent_transaction.id %}">Editar</a> |
+                            <a href="{% url 'finance:transaction_delete' parent_transaction.id %}">Deletar</a>
+                        </td>
+                    </tr>
+                    {% endwith %}
+                    {% elif transaction.is_recurring %}
+                    {% comment %}Transação recorrente pai{% endcomment %}
+                    <tr>
+                        <td>{{ transaction.id }}</td>
+                        <td>{{ transaction.due_date|date:"d/m/Y"|default:transaction.buy_date|date:"d/m/Y" }}</td>
+                        <td>
+                            {{ transaction.description|default:"-" }}
+                            <span style="font-size: 0.8em; color: #28a745;">
+                                🔄 Recorrente
+                                {% if transaction.recurrence_end_type == 'after_count' %}
+                                    ({{ transaction.get_current_installment }}/{{ transaction.get_total_installments }})
+                                {% else %}
+                                    ({{ transaction.get_current_installment }})
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>{{ transaction.account.name }}</td>
+                        <td>{{ transaction.category.category|default:"-" }}</td>
+                        <td>{{ transaction.category.subcategory|default:"-" }}</td>
+                        <td>{{ transaction.get_transaction_type_display }}</td>
+                        <td>
+                            {% if transaction.transaction_type == 'CR' %}+{% else %}-{% endif %}
+                            R$ {{ transaction.value|floatformat:2 }}
+                        </td>
+                        <td>{{ transaction.get_status_display }}</td>
+                        <td>
+                            <a href="{% url 'finance:transaction_update' transaction.id %}">Editar</a> |
+                            {% if transaction.pay_date and transaction.has_next_recurring_installment %}
+                                <a href="{% url 'finance:recurring_transaction_undo_payment' transaction.id %}">Desfazer Pagamento</a> |
+                            {% endif %}
+                            <a href="{% url 'finance:transaction_delete' transaction.id %}">Deletar</a>
+                        </td>
+                    </tr>
                     {% else %}
                     {% comment %}Transação normal{% endcomment %}
                     <tr>

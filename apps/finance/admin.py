@@ -78,6 +78,7 @@ class TransactionAdmin(admin.ModelAdmin):
         'status',
         'category',
         'operation_type',
+        'is_recurring',
     )
     list_display_links = ('id',)
     list_editable = ('status', 'pay_date')
@@ -96,6 +97,8 @@ class TransactionAdmin(admin.ModelAdmin):
         'category',
         'buy_date',
         'is_recurring',
+        'recurrence_type',
+        'recurrence_end_type',
         'is_split',
         'is_split_parent',
     )

@@ -1,4 +1,7 @@
 from django.db import models
+from dateutil.relativedelta import relativedelta
+from datetime import timedelta
+import re
 
 # Create your models here.
 class BaseModel(models.Model):
@@ -290,10 +293,198 @@ class Transaction(BaseModel):
         """Verifica se esta transação é pai de uma transação composta."""
         return self.child_transactions.filter(parent_type='composite').exists()
     
+    def has_next_recurring_installment(self):
+        """Verifica se existe próxima parcela recorrente gerada."""
+        return self.child_transactions.filter(parent_type='recurring').exists()
+    
+    def get_recurring_parent(self):
+        """Retorna a transação pai da recorrência (primeira parcela)."""
+        if self.parent_type == 'recurring' and self.parent_transaction:
+            return self.parent_transaction.get_recurring_parent()
+        return self
+    
+    def get_total_installments(self):
+        """Retorna o total de parcelas se finita, ou None se infinita."""
+        parent = self.get_recurring_parent()
+        if parent.recurrence_end_type == 'after_count':
+            return parent.recurrence_end_count
+        return None
+    
+    def get_current_installment(self):
+        """Retorna o número da parcela atual."""
+        if self.recurrence_sequence:
+            return self.recurrence_sequence
+        # Se não tem sequence, é a primeira parcela (pai)
+        return 1
+    
+    def can_generate_next(self):
+        """Verifica se pode gerar próxima parcela."""
+        if not self.is_recurring:
+            return False
+        
+        parent = self.get_recurring_parent()
+        
+        # Recorrência infinita: sempre pode gerar
+        if parent.recurrence_end_type == 'never':
+            return True
+        
+        # Recorrência finita: verifica se ainda há parcelas restantes
+        if parent.recurrence_end_type == 'after_count':
+            current = self.get_current_installment()
+            total = parent.recurrence_end_count
+            return current < total
+        
+        return False
+    
+    def get_next_due_date(self):
+        """Calcula a próxima data de vencimento baseado no tipo de recorrência e interval."""
+        if not self.is_recurring or not self.recurrence_type:
+            return None
+        
+        # Usa due_date atual ou pay_date como base
+        base_date = self.due_date or self.pay_date or self.buy_date
+        if not base_date:
+            return None
+        
+        parent = self.get_recurring_parent()
+        interval = parent.recurrence_interval or 1
+        
+        if parent.recurrence_type == 'weekly':
+            return base_date + timedelta(weeks=interval)
+        elif parent.recurrence_type == 'monthly':
+            return base_date + relativedelta(months=interval)
+        elif parent.recurrence_type == 'yearly':
+            return base_date + relativedelta(years=interval)
+        elif parent.recurrence_type == 'daily':
+            return base_date + timedelta(days=interval)
+        
+        return None
+    
+    def get_base_description(self):
+        """Retorna a descrição base sem sufixo de parcela."""
+        parent = self.get_recurring_parent()
+        base_description = parent.description or f"Transação #{parent.id}"
+        
+        # Remove sufixo de parcela se já existir (formato: " - XX/YY" ou " - XX")
+        if ' - ' in base_description:
+            parts = base_description.rsplit(' - ', 1)
+            if len(parts) == 2:
+                last_part = parts[-1]
+                # Verifica se é formato de parcela (XX/YY ou apenas número)
+                if '/' in last_part:
+                    # Formato XX/YY
+                    try:
+                        parts_num = last_part.split('/')
+                        if len(parts_num) == 2 and parts_num[0].isdigit() and parts_num[1].isdigit():
+                            base_description = parts[0]
+                    except:
+                        pass
+                elif last_part.isdigit():
+                    # Apenas número
+                    base_description = parts[0]
+        
+        return base_description
+    
+    def get_description_with_installment(self):
+        """Retorna a descrição com informação da parcela."""
+        base_description = self.get_base_description()
+        current = self.get_current_installment()
+        total = self.get_total_installments()
+        
+        if total:
+            return f"{base_description} - {current:02d}/{total:02d}"
+        else:
+            return f"{base_description} - {current}"
+    
+    def generate_next_installment(self):
+        """Gera a próxima parcela da recorrência."""
+        if not self.can_generate_next():
+            return None
+        
+        parent = self.get_recurring_parent()
+        next_due_date = self.get_next_due_date()
+        
+        if not next_due_date:
+            return None
+        
+        current_sequence = self.get_current_installment()
+        next_sequence = current_sequence + 1
+        
+        # Obtém descrição base do parent
+        base_description = parent.get_base_description()
+        total = self.get_total_installments()
+        
+        # Monta descrição com número da parcela
+        if total:
+            next_description = f"{base_description} - {next_sequence:02d}/{total:02d}"
+        else:
+            next_description = f"{base_description} - {next_sequence}"
+        
+        # Cria nova transação filha
+        next_transaction = Transaction.objects.create(
+            parent_transaction=self,
+            parent_type='recurring',
+            is_recurring=True,
+            recurrence_type=parent.recurrence_type,
+            recurrence_interval=parent.recurrence_interval,
+            recurrence_start_date=parent.recurrence_start_date,
+            recurrence_end_type=parent.recurrence_end_type,
+            recurrence_end_count=parent.recurrence_end_count,
+            recurrence_sequence=next_sequence,
+            account=self.account,
+            beneficiary=self.beneficiary,
+            category=self.category,
+            transaction_type=self.transaction_type,
+            operation_type=self.operation_type,
+            value=self.value,
+            buy_date=self.buy_date,
+            due_date=next_due_date,
+            pay_date=None,
+            status='pendente',
+            description=next_description,
+        )
+        
+        return next_transaction
+    
     def save(self, *args, **kwargs):
         # Define status automaticamente baseado em pay_date
+        old_pay_date = None
+        if self.pk:
+            try:
+                old_instance = Transaction.objects.get(pk=self.pk)
+                old_pay_date = old_instance.pay_date
+            except Transaction.DoesNotExist:
+                pass
+        
         if self.pay_date:
             self.status = 'pago'
         else:
             self.status = 'pendente'
-        super().save(*args, **kwargs)        
+        
+        # Salva a transação primeiro
+        super().save(*args, **kwargs)
+        
+        # Se pay_date foi preenchido e é uma transação recorrente, gera próxima parcela
+        if self.is_recurring and self.pay_date and not old_pay_date:
+            # Verifica se já existe próxima parcela gerada
+            existing_next = self.child_transactions.filter(
+                parent_type='recurring'
+            ).first()
+            
+            if not existing_next and self.can_generate_next():
+                self.generate_next_installment()
+        
+        # Atualiza descrição com número da parcela se necessário (apenas na primeira vez)
+        # Evita atualizar se já foi atualizado ou se está sendo atualizado via update_fields
+        if self.is_recurring and not kwargs.get('update_fields') and self.pk:
+            new_description = self.get_description_with_installment()
+            # Só atualiza se a descrição atual não tem o formato de parcela
+            current_desc = self.description or ""
+            # Verifica se já tem formato de parcela (contém " - " seguido de número)
+            has_installment_pattern = re.search(r' - \d+(\/\d+)?$', current_desc)
+            
+            if not has_installment_pattern:
+                # Atualiza usando update para evitar recursão
+                Transaction.objects.filter(pk=self.pk).update(description=new_description)
+                # Atualiza o objeto em memória
+                self.description = new_description

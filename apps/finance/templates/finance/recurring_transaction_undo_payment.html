@@ -1,0 +1,56 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Desfazer Pagamento - Finanças{% endblock %}
+
+{% block content %}
+        <h1>Desfazer Pagamento</h1>
+        
+        {% if messages %}
+        <div>
+            {% for message in messages %}
+            <div>{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <div>
+            <p><strong>Transação:</strong> {{ transaction.description|default:"-" }}</p>
+            <p><strong>Valor:</strong> R$ {{ transaction.value|floatformat:2 }}</p>
+            <p><strong>Data de Pagamento:</strong> {{ transaction.pay_date|date:"d/m/Y" }}</p>
+            <p><strong>Parcela:</strong> 
+                {% if transaction.recurrence_end_type == 'after_count' %}
+                    {{ transaction.get_current_installment }}/{{ transaction.get_total_installments }}
+                {% else %}
+                    {{ transaction.get_current_installment }}
+                {% endif %}
+            </p>
+        </div>
+        
+        {% if next_installment %}
+        <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 5px;">
+            <p><strong>Atenção:</strong> Esta ação irá:</p>
+            <ul>
+                <li>Remover a data de pagamento desta transação</li>
+                <li>Deletar a próxima parcela gerada (Parcela {{ next_installment.get_current_installment }})</li>
+                <li>Alterar o status para "Pendente"</li>
+            </ul>
+        </div>
+        {% else %}
+        <div style="margin: 20px 0; padding: 15px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px;">
+            <p>Esta ação irá remover a data de pagamento e alterar o status para "Pendente".</p>
+        </div>
+        {% endif %}
+        
+        <form method="post">
+            {% csrf_token %}
+            <div>
+                <button type="submit" style="background-color: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
+                    Confirmar Desfazer Pagamento
+                </button>
+                <a href="{% url 'finance:transactions_list' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 5px;">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+{% endblock %}
+

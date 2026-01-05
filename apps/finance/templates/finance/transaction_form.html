@@ -108,6 +108,71 @@
                 {% endif %}
             </div>
             
+            {% if form.is_recurring %}
+            <div>
+                <label for="{{ form.is_recurring.id_for_label }}">
+                    {{ form.is_recurring }}
+                    {{ form.is_recurring.label }}
+                </label>
+                {% if form.is_recurring.errors %}
+                    <div>{{ form.is_recurring.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div id="recurrence_fields" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+                <h3>Configurações de Recorrência</h3>
+                
+                <div>
+                    <label for="{{ form.recurrence_type.id_for_label }}">{{ form.recurrence_type.label }}</label>
+                    {{ form.recurrence_type }}
+                    {% if form.recurrence_type.errors %}
+                        <div>{{ form.recurrence_type.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div>
+                    <label for="{{ form.recurrence_interval.id_for_label }}">{{ form.recurrence_interval.label }}</label>
+                    {{ form.recurrence_interval }}
+                    {% if form.recurrence_interval.help_text %}
+                        <small>{{ form.recurrence_interval.help_text }}</small>
+                    {% endif %}
+                    {% if form.recurrence_interval.errors %}
+                        <div>{{ form.recurrence_interval.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div>
+                    <label for="{{ form.recurrence_start_date.id_for_label }}">{{ form.recurrence_start_date.label }}</label>
+                    {{ form.recurrence_start_date }}
+                    {% if form.recurrence_start_date.errors %}
+                        <div>{{ form.recurrence_start_date.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div>
+                    <label for="{{ form.recurrence_end_type.id_for_label }}">{{ form.recurrence_end_type.label }}</label>
+                    {{ form.recurrence_end_type }}
+                    {% if form.recurrence_end_type.errors %}
+                        <div>{{ form.recurrence_end_type.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div id="recurrence_end_count_field" style="display: none;">
+                    <label for="{{ form.recurrence_end_count.id_for_label }}">{{ form.recurrence_end_count.label }}</label>
+                    {{ form.recurrence_end_count }}
+                    {% if form.recurrence_end_count.errors %}
+                        <div>{{ form.recurrence_end_count.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                {% if has_recurring_children %}
+                <div style="margin-top: 10px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 3px;">
+                    <small><strong>Atenção:</strong> Esta transação já possui parcelas geradas. Os campos de recorrência não podem ser alterados.</small>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
             <div>
                 <button type="submit">Salvar</button>
                 {% if not transaction %}
@@ -117,5 +182,42 @@
                 {% endif %}
             </div>
         </form>
+        
+        {% if form.is_recurring %}
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const isRecurringCheckbox = document.getElementById('{{ form.is_recurring.id_for_label }}');
+                const recurrenceFields = document.getElementById('recurrence_fields');
+                const recurrenceEndType = document.getElementById('{{ form.recurrence_end_type.id_for_label }}');
+                const recurrenceEndCountField = document.getElementById('recurrence_end_count_field');
+                
+                function toggleRecurrenceFields() {
+                    if (isRecurringCheckbox.checked) {
+                        recurrenceFields.style.display = 'block';
+                    } else {
+                        recurrenceFields.style.display = 'none';
+                    }
+                }
+                
+                function toggleEndCountField() {
+                    if (recurrenceEndType.value === 'after_count') {
+                        recurrenceEndCountField.style.display = 'block';
+                        document.getElementById('{{ form.recurrence_end_count.id_for_label }}').required = true;
+                    } else {
+                        recurrenceEndCountField.style.display = 'none';
+                        document.getElementById('{{ form.recurrence_end_count.id_for_label }}').required = false;
+                    }
+                }
+                
+                // Inicializa estado
+                toggleRecurrenceFields();
+                toggleEndCountField();
+                
+                // Event listeners
+                isRecurringCheckbox.addEventListener('change', toggleRecurrenceFields);
+                recurrenceEndType.addEventListener('change', toggleEndCountField);
+            });
+        </script>
+        {% endif %}
 {% endblock %}
 

@@ -4,7 +4,7 @@ from django.contrib import messages
 from decimal import Decimal
 import json
 from .models import Account, Transaction, Beneficiary, Category
-from .forms import AccountForm, TransactionForm, TransferTransactionForm, CompositeTransactionForm
+from .forms import AccountForm, TransactionForm, TransferTransactionForm, CompositeTransactionForm, RecurringTransactionForm
 
 
 def finance_home(request):
@@ -146,23 +146,44 @@ def transaction_type_select(request):
 
 def transaction_create(request):
     """
-    Cria uma nova transação simples.
+    Cria uma nova transação simples ou recorrente.
     """
     if request.method == 'POST':
-        form = TransactionForm(request.POST)
+        # Usa RecurringTransactionForm para permitir recorrência
+        form = RecurringTransactionForm(request.POST)
         if form.is_valid():
-            # Define operation_type como 'simple' para transações simples
             transaction = form.save(commit=False)
             transaction.operation_type = 'simple'
+            
+            # Configura recorrência se marcada
+            is_recurring = form.cleaned_data.get('is_recurring', False)
+            if is_recurring:
+                transaction.is_recurring = True
+                transaction.recurrence_type = form.cleaned_data.get('recurrence_type')
+                transaction.recurrence_interval = form.cleaned_data.get('recurrence_interval', 1)
+                transaction.recurrence_start_date = form.cleaned_data.get('recurrence_start_date')
+                transaction.recurrence_end_type = form.cleaned_data.get('recurrence_end_type', 'never')
+                transaction.recurrence_end_count = form.cleaned_data.get('recurrence_end_count')
+                # Define due_date como recurrence_start_date se não foi preenchido
+                if not transaction.due_date and transaction.recurrence_start_date:
+                    transaction.due_date = transaction.recurrence_start_date
+                # Define recurrence_sequence como 1 para a primeira parcela
+                transaction.recurrence_sequence = 1
+                
+                # Atualiza descrição com número da parcela
+                base_description = transaction.description or f"Transação #{transaction.id}"
+                if transaction.recurrence_end_type == 'after_count' and transaction.recurrence_end_count:
+                    transaction.description = f"{base_description} - 01/{transaction.recurrence_end_count:02d}"
+                else:
+                    transaction.description = f"{base_description} - 1"
+            else:
+                transaction.is_recurring = False
+            
             transaction.save()
             messages.success(request, 'Transação criada com sucesso!')
             return redirect('finance:transactions_list')
     else:
-        form = TransactionForm()
-        # Define operation_type como 'simple' no formulário inicial
-        form.fields['operation_type'].initial = 'simple'
-        # Esconder o campo operation_type do formulário
-        form.fields['operation_type'].widget = forms.HiddenInput()
+        form = RecurringTransactionForm()
     
     context = {
         'form': form,
@@ -380,18 +401,55 @@ def transaction_update(request, transaction_id):
     if transaction.parent_type == 'composite' or transaction.child_transactions.filter(parent_type='composite').exists():
         return redirect('finance:composite_transaction_update', transaction_id=transaction_id)
     
+    # Para transações recorrentes, usa RecurringTransactionForm
+    # Mas não permite editar campos de recorrência se já houver parcelas geradas
+    is_recurring = transaction.is_recurring
+    has_children = transaction.child_transactions.filter(parent_type='recurring').exists()
+    
     if request.method == 'POST':
-        form = TransactionForm(request.POST, instance=transaction)
+        if is_recurring:
+            form = RecurringTransactionForm(request.POST, instance=transaction)
+        else:
+            form = TransactionForm(request.POST, instance=transaction)
+        
         if form.is_valid():
-            form.save()
+            transaction = form.save(commit=False)
+            
+            # Se for recorrente, atualiza campos de recorrência
+            if is_recurring and isinstance(form, RecurringTransactionForm):
+                # Não permite alterar recorrência se já houver parcelas geradas
+                if has_children:
+                    # Mantém valores originais de recorrência
+                    parent = transaction.get_recurring_parent()
+                    transaction.recurrence_type = parent.recurrence_type
+                    transaction.recurrence_interval = parent.recurrence_interval
+                    transaction.recurrence_start_date = parent.recurrence_start_date
+                    transaction.recurrence_end_type = parent.recurrence_end_type
+                    transaction.recurrence_end_count = parent.recurrence_end_count
+                else:
+                    # Permite alterar se ainda não há parcelas geradas
+                    transaction.is_recurring = form.cleaned_data.get('is_recurring', False)
+                    if transaction.is_recurring:
+                        transaction.recurrence_type = form.cleaned_data.get('recurrence_type')
+                        transaction.recurrence_interval = form.cleaned_data.get('recurrence_interval', 1)
+                        transaction.recurrence_start_date = form.cleaned_data.get('recurrence_start_date')
+                        transaction.recurrence_end_type = form.cleaned_data.get('recurrence_end_type', 'never')
+                        transaction.recurrence_end_count = form.cleaned_data.get('recurrence_end_count')
+            
+            transaction.save()
             messages.success(request, 'Transação atualizada com sucesso!')
             return redirect('finance:transactions_list')
     else:
-        form = TransactionForm(instance=transaction)
+        if is_recurring:
+            form = RecurringTransactionForm(instance=transaction)
+        else:
+            form = TransactionForm(instance=transaction)
     
     context = {
         'form': form,
         'transaction': transaction,
+        'is_recurring': is_recurring,
+        'has_recurring_children': has_children,
     }
     
     return render(request, 'finance/transaction_form.html', context)
@@ -823,3 +881,50 @@ def composite_transaction_delete(request, transaction_id):
     }
     
     return render(request, 'finance/composite_transaction_delete.html', context)
+
+
+def recurring_transaction_undo_payment(request, transaction_id):
+    """
+    Desfaz o pagamento de uma transação recorrente, removendo pay_date
+    e deletando a próxima parcela gerada (se existir).
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    if not transaction.is_recurring:
+        messages.error(request, 'Esta transação não é recorrente.')
+        return redirect('finance:transactions_list')
+    
+    if not transaction.pay_date:
+        messages.warning(request, 'Esta transação não está paga.')
+        return redirect('finance:transactions_list')
+    
+    if request.method == 'POST':
+        # Busca próxima parcela gerada
+        next_installment = transaction.child_transactions.filter(
+            parent_type='recurring'
+        ).first()
+        
+        if next_installment:
+            next_installment.delete()
+            messages.success(request, 'Pagamento desfeito e próxima parcela removida.')
+        else:
+            messages.success(request, 'Pagamento desfeito.')
+        
+        # Remove pay_date e atualiza status
+        transaction.pay_date = None
+        transaction.status = 'pendente'
+        transaction.save()
+        
+        return redirect('finance:transactions_list')
+    
+    # GET - mostra confirmação
+    next_installment = transaction.child_transactions.filter(
+        parent_type='recurring'
+    ).first()
+    
+    context = {
+        'transaction': transaction,
+        'next_installment': next_installment,
+    }
+    
+    return render(request, 'finance/recurring_transaction_undo_payment.html', context)
