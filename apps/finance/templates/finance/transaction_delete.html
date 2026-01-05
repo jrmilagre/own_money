@@ -9,14 +9,79 @@
             <p>Tem certeza que deseja deletar a transação <strong>{{ transaction.description|default:"Sem descrição" }}</strong>?</p>
             <p>Data: {{ transaction.buy_date|date:"d/m/Y" }}</p>
             <p>Valor: R$ {{ transaction.value|floatformat:2 }}</p>
+            
+            {% if is_recurring_parent_delete %}
+            <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 5px;">
+                <p><strong>Atenção: Esta é uma transação recorrente pai.</strong></p>
+                <ul>
+                    <li><strong>Parcelas registradas:</strong> {{ registered_children_count }}</li>
+                    <li><strong>Parcelas pendentes:</strong> {{ pending_children_count }}</li>
+                </ul>
+                {% if registered_children_count > 0 or pending_children_count > 0 %}
+                <p style="margin-top: 10px; color: #856404;">
+                    <strong>Importante:</strong> Ao deletar esta transação pai:
+                    <ul style="margin-top: 5px;">
+                        <li>A primeira parcela filha será promovida a raiz da recorrência e se tornará independente</li>
+                        {% if registered_children_count > 0 %}
+                        <li>As {{ registered_children_count }} parcela(s) registrada(s) serão preservadas e continuarão funcionando normalmente</li>
+                        {% endif %}
+                        {% if pending_children_count > 0 %}
+                        <li>As {{ pending_children_count }} parcela(s) pendente(s) serão preservadas e continuarão funcionando normalmente</li>
+                        {% endif %}
+                    </ul>
+                </p>
+                {% else %}
+                <p style="margin-top: 10px;">
+                    Não há parcelas filhas. A transação pai será deletada normalmente.
+                </p>
+                {% endif %}
+            </div>
+            {% elif transaction.parent_type == 'recurring' and transaction.is_recurring %}
+            <div style="margin: 20px 0; padding: 15px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px;">
+                <p><strong>Esta é uma parcela recorrente filha.</strong></p>
+                {% if transaction.pay_date %}
+                <p style="color: #856404;">
+                    <strong>Atenção:</strong> Esta parcela já foi registrada. Não é possível deletá-la diretamente. 
+                    Use a função "Desfazer Pagamento" se necessário.
+                </p>
+                {% else %}
+                <p>Esta parcela pendente será deletada.</p>
+                {% if is_recurring_child_delete %}
+                <ul style="margin-top: 10px;">
+                    <li><strong>Parcelas subsequentes pendentes:</strong> {{ pending_subsequent_count }}</li>
+                    <li><strong>Parcelas subsequentes registradas:</strong> {{ registered_subsequent_count }}</li>
+                </ul>
+                {% if pending_subsequent_count > 0 %}
+                <p style="margin-top: 10px; color: #856404;">
+                    <strong>Importante:</strong> {{ pending_subsequent_count }} parcela(s) subsequente(s) pendente(s) também serão deletada(s).
+                    {% if registered_subsequent_count > 0 %}
+                    {{ registered_subsequent_count }} parcela(s) subsequente(s) registrada(s) serão preservada(s) e suas sequências serão reorganizadas.
+                    {% endif %}
+                </p>
+                {% elif registered_subsequent_count > 0 %}
+                <p style="margin-top: 10px; color: #856404;">
+                    <strong>Importante:</strong> {{ registered_subsequent_count }} parcela(s) subsequente(s) registrada(s) serão preservada(s) e suas sequências serão reorganizadas.
+                </p>
+                {% endif %}
+                {% endif %}
+                {% endif %}
+            </div>
+            {% endif %}
+            
             <p>Esta ação não pode ser desfeita.</p>
         </div>
         
         <form method="post">
             {% csrf_token %}
             <div>
-                <button type="submit">Confirmar Deletar</button>
-                <a href="{% url 'finance:transactions_list' %}">Cancelar</a>
+                {% if not transaction.pay_date or not transaction.parent_type == 'recurring' or is_recurring_parent_delete %}
+                <button type="submit" style="background-color: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
+                    Confirmar Deletar
+                </button>
+                {% endif %}
+                <a href="{% url 'finance:transactions_list' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 5px;">
+                    Cancelar
+                </a>
             </div>
         </form>
 {% endblock %}

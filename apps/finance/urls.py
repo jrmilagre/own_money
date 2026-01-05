@@ -23,6 +23,8 @@ urlpatterns = [
     path('transactions/<int:transaction_id>/delete/transfer/', views.transfer_delete, name='transfer_delete'),
     path('transactions/<int:transaction_id>/delete/composite/', views.composite_transaction_delete, name='composite_transaction_delete'),
     path('transactions/<int:transaction_id>/recurring/undo/', views.recurring_transaction_undo_payment, name='recurring_transaction_undo_payment'),
+    path('transactions/<int:transaction_id>/recurring/interrupt/', views.recurring_transaction_interrupt, name='recurring_transaction_interrupt'),
+    path('transactions/<int:transaction_id>/register/', views.transaction_register, name='transaction_register'),
     path('account/<int:account_id>/statement/', views.account_statement, name='account_statement'),
 ]
 

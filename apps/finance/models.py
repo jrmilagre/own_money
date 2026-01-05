@@ -150,7 +150,7 @@ class Transaction(BaseModel):
     
     STATUS_CHOICES = [
         ('pendente', 'Pendente'),
-        ('pago', 'Pago'),
+        ('registrado', 'Registrado'),
     ]
     
     operation_type = models.CharField(
@@ -279,6 +279,11 @@ class Transaction(BaseModel):
         blank=True,
         help_text='1, 2, 3... para transações filhas geradas'
     )
+    recurrence_interrupted = models.BooleanField(
+        'Recorrência interrompida',
+        default=False,
+        help_text='Se marcado, a recorrência não gerará mais parcelas automaticamente'
+    )
     
     class Meta:
         verbose_name = 'Transação'
@@ -297,11 +302,200 @@ class Transaction(BaseModel):
         """Verifica se existe próxima parcela recorrente gerada."""
         return self.child_transactions.filter(parent_type='recurring').exists()
     
+    def get_next_pending_installment(self):
+        """Retorna a próxima parcela pendente (sem pay_date), se existir."""
+        return self.child_transactions.filter(
+            parent_type='recurring',
+            pay_date__isnull=True
+        ).first()
+    
+    def get_pending_children(self):
+        """Retorna todas as parcelas filhas pendentes (sem pay_date)."""
+        return self.child_transactions.filter(
+            parent_type='recurring',
+            pay_date__isnull=True
+        )
+    
+    def get_registered_children(self):
+        """Retorna todas as parcelas filhas registradas (com pay_date)."""
+        return self.child_transactions.filter(
+            parent_type='recurring',
+            pay_date__isnull=False
+        )
+    
+    def get_all_pending_installments(self):
+        """
+        Retorna todas as parcelas pendentes da recorrência (não apenas filhas diretas).
+        Busca recursivamente todas as parcelas da recorrência que são pendentes.
+        """
+        parent = self.get_recurring_parent()
+        
+        # Lista para armazenar todas as parcelas pendentes
+        pending_list = []
+        
+        # Se a raiz é pendente, adiciona
+        if not parent.pay_date:
+            pending_list.append(parent)
+        
+        # Busca recursivamente todas as filhas pendentes
+        def get_all_children(transaction):
+            children = transaction.child_transactions.filter(
+                parent_type='recurring'
+            )
+            for child in children:
+                if not child.pay_date:
+                    pending_list.append(child)
+                get_all_children(child)
+        
+        get_all_children(parent)
+        
+        # Retorna um queryset ordenado por recurrence_sequence
+        if pending_list:
+            ids = [t.id for t in pending_list]
+            return Transaction.objects.filter(id__in=ids).order_by('recurrence_sequence')
+        return Transaction.objects.none()
+    
+    def is_next_pending_installment(self):
+        """
+        Verifica se esta transação é a próxima parcela pendente da recorrência.
+        Retorna True se:
+        - É pendente (sem pay_date) e é a primeira pendente na sequência, OU
+        - É a raiz e não tem parcelas pendentes, OU
+        - É a última registrada e não há parcelas pendentes (será a próxima a gerar)
+        """
+        if not self.is_recurring:
+            return False
+        
+        parent = self.get_recurring_parent()
+        
+        # Busca todas as parcelas pendentes da recorrência (não apenas filhas diretas)
+        all_pending = parent.get_all_pending_installments()
+        has_pending = all_pending.exists()
+        
+        # Se há parcelas pendentes, prioriza elas
+        if has_pending:
+            # Se a transação é registrada (tem pay_date), não é a próxima pendente
+            if self.pay_date:
+                return False
+            
+            # Se a transação é pendente, verifica se é a primeira pendente na sequência
+            first_pending = all_pending.first()
+            return self.id == first_pending.id
+        
+        # Se não há parcelas pendentes
+        # Se a transação é pendente e é a raiz, é a próxima
+        if not self.pay_date:
+            if self.parent_type != 'recurring':
+                return True
+            return False
+        
+        # Se a transação é registrada e não há parcelas pendentes
+        # Verifica se é a última registrada
+        if self.pay_date:
+            # Busca todas as parcelas registradas da recorrência
+            registered_list = []
+            if parent.pay_date:
+                registered_list.append(parent)
+            
+            def get_all_registered_children(transaction):
+                children = transaction.child_transactions.filter(
+                    parent_type='recurring'
+                )
+                for child in children:
+                    if child.pay_date:
+                        registered_list.append(child)
+                    get_all_registered_children(child)
+            
+            get_all_registered_children(parent)
+            
+            if registered_list:
+                # Ordena por recurrence_sequence e pega a última
+                registered_list.sort(key=lambda t: t.get_current_installment(), reverse=True)
+                last_registered = registered_list[0]
+                return self.id == last_registered.id
+            # Se não há parcelas registradas, a raiz é a última
+            if self.parent_type != 'recurring':
+                return True
+        
+        return False
+    
+    def get_subsequent_installments(self):
+        """Retorna todas as parcelas subsequentes (com sequence maior que a atual)."""
+        current_sequence = self.get_current_installment()
+        parent = self.get_recurring_parent()
+        
+        # Busca todas as parcelas filhas do parent com sequence maior
+        return parent.child_transactions.filter(
+            parent_type='recurring',
+            recurrence_sequence__gt=current_sequence
+        ).order_by('recurrence_sequence')
+    
+    def reorganize_sequences(self):
+        """Reorganiza as sequências das parcelas filhas para manter continuidade."""
+        if not self.is_recurring:
+            return
+        
+        parent = self.get_recurring_parent()
+        children = parent.child_transactions.filter(
+            parent_type='recurring'
+        ).order_by('recurrence_sequence', 'id')
+        
+        # A primeira parcela é o pai (sequence 1 ou None), então as filhas começam em 2
+        sequence = 2
+        for child in children:
+            if child.recurrence_sequence != sequence:
+                child.recurrence_sequence = sequence
+                # Atualiza descrição também
+                base_description = parent.get_base_description()
+                total = parent.get_total_installments()
+                if total:
+                    child.description = f"{base_description} - {sequence:02d}/{total:02d}"
+                else:
+                    child.description = f"{base_description} - {sequence}"
+                child.save(update_fields=['recurrence_sequence', 'description'])
+            sequence += 1
+    
     def get_recurring_parent(self):
         """Retorna a transação pai da recorrência (primeira parcela)."""
-        if self.parent_type == 'recurring' and self.parent_transaction:
-            return self.parent_transaction.get_recurring_parent()
-        return self
+        # Se não tem parent_transaction ou parent_type não é 'recurring', é a própria raiz
+        if not self.parent_transaction or self.parent_type != 'recurring':
+            return self
+        # Segue a cadeia de parent_transaction
+        return self.parent_transaction.get_recurring_parent()
+    
+    def promote_first_child_to_root(self):
+        """
+        Promove a primeira parcela filha a raiz da recorrência.
+        Remove parent_transaction da primeira parcela e atualiza outras para referenciarem ela.
+        Retorna a primeira parcela promovida ou None se não houver filhas.
+        """
+        if not self.is_recurring:
+            return None
+        
+        # Busca todas as parcelas filhas
+        children = self.child_transactions.filter(
+            parent_type='recurring'
+        ).order_by('recurrence_sequence', 'id')
+        
+        if not children.exists():
+            return None
+        
+        # Identifica a primeira parcela filha (menor recurrence_sequence)
+        first_child = children.first()
+        
+        # Remove parent_transaction e parent_type da primeira parcela
+        first_child.parent_transaction = None
+        first_child.parent_type = None
+        first_child.save(update_fields=['parent_transaction', 'parent_type'])
+        
+        # Atualiza todas as outras parcelas filhas para referenciarem a primeira
+        other_children = children.exclude(id=first_child.id)
+        for child in other_children:
+            child.parent_transaction = first_child
+            child.parent_type = 'recurring'
+            child.save(update_fields=['parent_transaction', 'parent_type'])
+        
+        return first_child
     
     def get_total_installments(self):
         """Retorna o total de parcelas se finita, ou None se infinita."""
@@ -324,7 +518,11 @@ class Transaction(BaseModel):
         
         parent = self.get_recurring_parent()
         
-        # Recorrência infinita: sempre pode gerar
+        # Se a recorrência está interrompida, não pode gerar
+        if parent.recurrence_interrupted:
+            return False
+        
+        # Recorrência infinita: sempre pode gerar (se não estiver interrompida)
         if parent.recurrence_end_type == 'never':
             return True
         
@@ -457,20 +655,24 @@ class Transaction(BaseModel):
                 pass
         
         if self.pay_date:
-            self.status = 'pago'
+            self.status = 'registrado'
         else:
             self.status = 'pendente'
         
         # Salva a transação primeiro
         super().save(*args, **kwargs)
         
-        # Se pay_date foi preenchido e é uma transação recorrente, gera próxima parcela
-        if self.is_recurring and self.pay_date and not old_pay_date:
+        # Se pay_date está preenchido e é uma transação recorrente, verifica se precisa gerar próxima parcela
+        if self.is_recurring and self.pay_date:
             # Verifica se já existe próxima parcela gerada
             existing_next = self.child_transactions.filter(
                 parent_type='recurring'
             ).first()
             
+            # Gera próxima parcela se:
+            # 1. Não existe próxima parcela gerada
+            # 2. Pode gerar próxima (não está interrompida, não excedeu limite, etc)
+            # 3. pay_date foi preenchido (seja pela primeira vez ou alterado)
             if not existing_next and self.can_generate_next():
                 self.generate_next_installment()
         

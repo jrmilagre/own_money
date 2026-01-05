@@ -1,0 +1,46 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Interromper Recorrência - Finanças{% endblock %}
+
+{% block content %}
+        <h1>Interromper Recorrência</h1>
+        
+        {% if messages %}
+        <div>
+            {% for message in messages %}
+            <div>{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <div>
+            <p><strong>Transação:</strong> {{ parent.description|default:"-" }}</p>
+            <p><strong>Valor:</strong> R$ {{ parent.value|floatformat:2 }}</p>
+            <p><strong>Tipo de Recorrência:</strong> Infinita</p>
+        </div>
+        
+        <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 5px;">
+            <p><strong>Atenção:</strong> Esta ação irá interromper definitivamente a recorrência infinita.</p>
+            <ul style="margin-top: 10px;">
+                <li><strong>Parcelas registradas:</strong> {{ registered_count }}</li>
+                <li><strong>Parcelas pendentes:</strong> {{ pending_count }}</li>
+            </ul>
+            <p style="margin-top: 10px; color: #856404;">
+                <strong>Importante:</strong> Todas as {{ registered_count|add:pending_count }} parcela(s) existente(s) serão preservadas. 
+                No entanto, nenhuma nova parcela será gerada automaticamente após esta interrupção.
+            </p>
+        </div>
+        
+        <form method="post">
+            {% csrf_token %}
+            <div>
+                <button type="submit" style="background-color: #ff9800; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
+                    Confirmar Interromper Recorrência
+                </button>
+                <a href="{% url 'finance:transactions_list' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 5px;">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+{% endblock %}
+

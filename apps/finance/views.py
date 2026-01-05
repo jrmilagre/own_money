@@ -207,7 +207,7 @@ def transfer_create(request):
             pay_date = form.cleaned_data.get('pay_date')
             
             # Determina status baseado em pay_date
-            status = 'pago' if pay_date else 'pendente'
+            status = 'registrado' if pay_date else 'pendente'
             
             # Cria a transação de débito (origem)
             debit_transaction = Transaction.objects.create(
@@ -282,7 +282,7 @@ def transfer_update(request, transaction_id):
             pay_date = form.cleaned_data.get('pay_date')
             
             # Determina status baseado em pay_date
-            status = 'pago' if pay_date else 'pendente'
+            status = 'registrado' if pay_date else 'pendente'
             
             # Atualiza a transação de débito (origem)
             debit_transaction.account = source_account
@@ -417,10 +417,11 @@ def transaction_update(request, transaction_id):
             
             # Se for recorrente, atualiza campos de recorrência
             if is_recurring and isinstance(form, RecurringTransactionForm):
+                parent = transaction.get_recurring_parent()
+                
                 # Não permite alterar recorrência se já houver parcelas geradas
                 if has_children:
                     # Mantém valores originais de recorrência
-                    parent = transaction.get_recurring_parent()
                     transaction.recurrence_type = parent.recurrence_type
                     transaction.recurrence_interval = parent.recurrence_interval
                     transaction.recurrence_start_date = parent.recurrence_start_date
@@ -460,6 +461,7 @@ def transaction_delete(request, transaction_id):
     Deleta uma transação.
     Redireciona para transfer_delete se for uma transferência.
     Redireciona para composite_transaction_delete se for uma transação composta.
+    Para transações recorrentes, preserva as registradas e deleta apenas as pendentes.
     """
     transaction = get_object_or_404(Transaction, id=transaction_id)
     
@@ -471,6 +473,116 @@ def transaction_delete(request, transaction_id):
     if transaction.parent_type == 'composite' or transaction.child_transactions.filter(parent_type='composite').exists():
         return redirect('finance:composite_transaction_delete', transaction_id=transaction_id)
     
+    # Lógica especial para transações recorrentes
+    if transaction.is_recurring:
+        if transaction.parent_type == 'recurring':
+            # É uma parcela filha recorrente
+            if transaction.status == 'registrado' or transaction.pay_date:
+                messages.error(request, 'Não é possível deletar uma parcela recorrente já registrada. Use a função "Desfazer Pagamento" se necessário.')
+                return redirect('finance:transactions_list')
+            else:
+                # Parcela pendente - pode deletar
+                if request.method == 'POST':
+                    # Obtém a transação pai para reorganizar sequências depois
+                    parent = transaction.get_recurring_parent()
+                    
+                    # Identifica todas as parcelas subsequentes (com sequence maior)
+                    subsequent_installments = transaction.get_subsequent_installments()
+                    
+                    # Deleta apenas as parcelas subsequentes pendentes
+                    pending_subsequent = subsequent_installments.filter(pay_date__isnull=True)
+                    pending_count = pending_subsequent.count()
+                    registered_subsequent = subsequent_installments.filter(pay_date__isnull=False)
+                    registered_count = registered_subsequent.count()
+                    
+                    # Deleta a parcela atual e as subsequentes pendentes
+                    transaction.delete()
+                    pending_subsequent.delete()
+                    
+                    # Reorganiza as sequências das parcelas restantes
+                    parent.reorganize_sequences()
+                    
+                    if pending_count > 0:
+                        messages.success(request, f'Parcela recorrente e {pending_count} parcela(s) subsequente(s) pendente(s) deletada(s) com sucesso.')
+                        if registered_count > 0:
+                            messages.info(request, f'{registered_count} parcela(s) subsequente(s) registrada(s) foram preservada(s).')
+                    else:
+                        messages.success(request, 'Parcela recorrente pendente deletada com sucesso.')
+                    
+                    return redirect('finance:transactions_list')
+                else:
+                    # GET - mostra confirmação com detalhes sobre parcelas subsequentes
+                    subsequent_installments = transaction.get_subsequent_installments()
+                    pending_subsequent_count = subsequent_installments.filter(pay_date__isnull=True).count()
+                    registered_subsequent_count = subsequent_installments.filter(pay_date__isnull=False).count()
+                    
+                    context = {
+                        'transaction': transaction,
+                        'pending_subsequent_count': pending_subsequent_count,
+                        'registered_subsequent_count': registered_subsequent_count,
+                        'is_recurring_child_delete': True,
+                    }
+                    return render(request, 'finance/transaction_delete.html', context)
+        else:
+            # É a transação pai recorrente
+            if request.method == 'POST':
+                # Verifica se há parcelas filhas (registradas ou pendentes)
+                all_children = transaction.child_transactions.filter(parent_type='recurring')
+                total_children_count = all_children.count()
+                
+                if total_children_count > 0:
+                    # Conta parcelas antes da promoção
+                    pending_before = transaction.get_pending_children().count()
+                    registered_before = transaction.get_registered_children().count()
+                    
+                    # Promove a primeira parcela filha a raiz antes de deletar
+                    first_child = transaction.promote_first_child_to_root()
+                    
+                    if first_child:
+                        # Verifica quantas parcelas registradas e pendentes restam (agora referenciam first_child)
+                        registered_children = first_child.get_registered_children()
+                        registered_count = registered_children.count()
+                        pending_children = first_child.get_pending_children()
+                        pending_count = pending_children.count()
+                        
+                        # Deleta apenas a transação pai - preserva todas as parcelas filhas (registradas e pendentes)
+                        transaction.delete()
+                        
+                        if registered_count > 0 and pending_count > 0:
+                            messages.success(request, f'Transação pai deletada. A primeira parcela foi promovida a raiz. {registered_count} parcela(s) registrada(s) e {pending_count} parcela(s) pendente(s) foram preservadas e tornadas independentes.')
+                        elif registered_count > 0:
+                            messages.success(request, f'Transação pai deletada. A primeira parcela foi promovida a raiz. {registered_count} parcela(s) registrada(s) foram preservadas e tornadas independentes.')
+                        elif pending_count > 0:
+                            messages.success(request, f'Transação pai deletada. A primeira parcela foi promovida a raiz. {pending_count} parcela(s) pendente(s) foram preservadas e tornadas independentes.')
+                        else:
+                            messages.success(request, 'Transação pai deletada. A primeira parcela foi promovida a raiz.')
+                    else:
+                        # Fallback: se não conseguiu promover, deleta normalmente
+                        pending_children = transaction.get_pending_children()
+                        pending_count = pending_children.count()
+                        pending_children.delete()
+                        transaction.delete()
+                        messages.success(request, f'Transação recorrente e {pending_count} parcela(s) pendente(s) deletada(s) com sucesso.')
+                else:
+                    # Não há parcelas filhas, pode deletar normalmente
+                    transaction.delete()
+                    messages.success(request, 'Transação recorrente deletada com sucesso.')
+                
+                return redirect('finance:transactions_list')
+            else:
+                # GET - mostra confirmação com detalhes
+                registered_children_count = transaction.get_registered_children().count()
+                pending_children_count = transaction.get_pending_children().count()
+                
+                context = {
+                    'transaction': transaction,
+                    'registered_children_count': registered_children_count,
+                    'pending_children_count': pending_children_count,
+                    'is_recurring_parent_delete': True,
+                }
+                return render(request, 'finance/transaction_delete.html', context)
+    
+    # Lógica padrão para transações não recorrentes
     if request.method == 'POST':
         transaction.delete()
         messages.success(request, 'Transação deletada com sucesso!')
@@ -562,7 +674,7 @@ def composite_transaction_create(request):
             lines = form.cleaned_data['lines']
             
             # Determina status baseado em pay_date
-            status = 'pago' if pay_date else 'pendente'
+            status = 'registrado' if pay_date else 'pendente'
             
             # Cria a primeira transação como "pai"
             parent_transaction = None
@@ -676,7 +788,7 @@ def composite_transaction_update(request, transaction_id):
             lines = form.cleaned_data['lines']
             
             # Determina status baseado em pay_date
-            status = 'pago' if pay_date else 'pendente'
+            status = 'registrado' if pay_date else 'pendente'
             
             # Deleta todas as transações antigas (pai e filhas)
             # Primeiro deleta as filhas para evitar problemas de CASCADE
@@ -898,6 +1010,12 @@ def recurring_transaction_undo_payment(request, transaction_id):
         messages.warning(request, 'Esta transação não está paga.')
         return redirect('finance:transactions_list')
     
+    # Verifica se é recorrência finita (apenas finitas podem desfazer pagamento)
+    parent = transaction.get_recurring_parent()
+    if parent.recurrence_end_type != 'after_count':
+        messages.error(request, 'A funcionalidade "Desfazer Pagamento" está disponível apenas para transações com recorrência finita.')
+        return redirect('finance:transactions_list')
+    
     if request.method == 'POST':
         # Busca próxima parcela gerada
         next_installment = transaction.child_transactions.filter(
@@ -928,3 +1046,117 @@ def recurring_transaction_undo_payment(request, transaction_id):
     }
     
     return render(request, 'finance/recurring_transaction_undo_payment.html', context)
+
+
+def recurring_transaction_interrupt(request, transaction_id):
+    """
+    Interrompe definitivamente uma recorrência infinita, impedindo geração de novas parcelas.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    if not transaction.is_recurring:
+        messages.error(request, 'Esta transação não é recorrente.')
+        return redirect('finance:transactions_list')
+    
+    # Obtém a raiz da recorrência (pode ser chamada de qualquer parcela)
+    parent = transaction.get_recurring_parent()
+    
+    # Verifica se é recorrência infinita
+    if parent.recurrence_end_type != 'never':
+        messages.error(request, 'A funcionalidade "Interromper Recorrência" está disponível apenas para transações com recorrência infinita.')
+        return redirect('finance:transactions_list')
+    
+    # Verifica se já está interrompida
+    if parent.recurrence_interrupted:
+        messages.warning(request, 'Esta recorrência já está interrompida.')
+        return redirect('finance:transactions_list')
+    
+    if request.method == 'POST':
+        # Marca a raiz como interrompida
+        parent.recurrence_interrupted = True
+        parent.save(update_fields=['recurrence_interrupted'])
+        
+        # Conta parcelas existentes
+        registered_count = parent.get_registered_children().count()
+        pending_count = parent.get_pending_children().count()
+        
+        messages.success(request, f'Recorrência interrompida com sucesso. {registered_count} parcela(s) registrada(s) e {pending_count} parcela(s) pendente(s) foram preservadas. Nenhuma nova parcela será gerada automaticamente.')
+        return redirect('finance:transactions_list')
+    
+    # GET - mostra confirmação
+    registered_count = parent.get_registered_children().count()
+    pending_count = parent.get_pending_children().count()
+    
+    context = {
+        'transaction': transaction,
+        'parent': parent,
+        'registered_count': registered_count,
+        'pending_count': pending_count,
+    }
+    
+    return render(request, 'finance/recurring_transaction_interrupt.html', context)
+
+
+def transaction_register(request, transaction_id):
+    """
+    Registra o pagamento de uma transação, permitindo editar campos e preenchendo pay_date com due_date.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    if request.method == 'POST':
+        form = TransactionForm(request.POST, instance=transaction)
+        if form.is_valid():
+            transaction = form.save(commit=False)
+            # Se pay_date foi preenchido no formulário, usa esse valor
+            # Se não foi preenchido e due_date existe, usa due_date
+            pay_date_from_form = form.cleaned_data.get('pay_date')
+            if not pay_date_from_form and transaction.due_date:
+                transaction.pay_date = transaction.due_date
+            elif pay_date_from_form:
+                transaction.pay_date = pay_date_from_form
+            
+            # Salva todos os campos editáveis (já estão no form.cleaned_data)
+            transaction.save()
+            
+            # Sempre retorna JSON para facilitar o tratamento no frontend
+            from django.http import JsonResponse
+            return JsonResponse({
+                'success': True,
+                'message': 'Transação registrada com sucesso!',
+                'status': transaction.get_status_display(),
+            })
+        else:
+            # Se o formulário não é válido, retorna erros em JSON
+            from django.http import JsonResponse
+            from django.forms.utils import ErrorDict
+            errors = {}
+            for field, error_list in form.errors.items():
+                errors[field] = [str(e) for e in error_list]
+            
+            return JsonResponse({
+                'success': False,
+                'message': 'Erro de validação',
+                'errors': errors
+            }, status=400)
+    else:
+        # GET - pré-preenche pay_date com due_date se não estiver preenchido
+        initial_data = {}
+        if transaction.due_date and not transaction.pay_date:
+            initial_data['pay_date'] = transaction.due_date
+        
+        form = TransactionForm(instance=transaction, initial=initial_data)
+        # Esconde campos que não devem ser editados no modal de registro
+        if 'operation_type' in form.fields:
+            form.fields['operation_type'].widget = forms.HiddenInput()
+        if 'buy_date' in form.fields:
+            form.fields['buy_date'].widget = forms.HiddenInput()
+        if 'due_date' in form.fields:
+            form.fields['due_date'].widget = forms.HiddenInput()
+    
+    context = {
+        'form': form,
+        'transaction': transaction,
+    }
+    
+    return render(request, 'finance/transaction_register_modal.html', context)
+

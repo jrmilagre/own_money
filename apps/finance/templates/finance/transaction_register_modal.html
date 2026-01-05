@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Registrar Transação - Finanças</title>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 600px;
+            border-radius: 5px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        .form-group select {
+            height: 38px;
+        }
+        .button-group {
+            margin-top: 20px;
+            text-align: right;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #218838;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+        .error {
+            color: red;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .readonly-field {
+            background-color: #f8f9fa;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+<div id="registerModal" class="modal" style="display: block;">
+    <div class="modal-content">
+        <span class="close" onclick="closeRegisterModal()">&times;</span>
+        <h2>Registrar Transação</h2>
+        
+        <form id="registerForm" method="post" action="{% url 'finance:transaction_register' transaction.id %}">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label for="{{ form.description.id_for_label }}"><strong>{{ form.description.label }}:</strong></label>
+                {{ form.description }}
+                {% if form.description.errors %}
+                    <div class="error">{{ form.description.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.account.id_for_label }}"><strong>{{ form.account.label }}:</strong></label>
+                {{ form.account }}
+                {% if form.account.errors %}
+                    <div class="error">{{ form.account.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.transaction_type.id_for_label }}"><strong>{{ form.transaction_type.label }}:</strong></label>
+                {{ form.transaction_type }}
+                {% if form.transaction_type.errors %}
+                    <div class="error">{{ form.transaction_type.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.value.id_for_label }}"><strong>{{ form.value.label }}:</strong></label>
+                {{ form.value }}
+                {% if form.value.errors %}
+                    <div class="error">{{ form.value.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.category.id_for_label }}"><strong>{{ form.category.label }}:</strong></label>
+                {{ form.category }}
+                {% if form.category.errors %}
+                    <div class="error">{{ form.category.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.beneficiary.id_for_label }}"><strong>{{ form.beneficiary.label }}:</strong></label>
+                {{ form.beneficiary }}
+                {% if form.beneficiary.errors %}
+                    <div class="error">{{ form.beneficiary.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.pay_date.id_for_label }}"><strong>{{ form.pay_date.label }}:</strong></label>
+                {{ form.pay_date }}
+                {% if form.pay_date.errors %}
+                    <div class="error">{{ form.pay_date.errors }}</div>
+                {% endif %}
+                {% if form.pay_date.help_text %}
+                    <small>{{ form.pay_date.help_text }}</small>
+                {% endif %}
+            </div>
+            
+            {{ form.operation_type }}
+            {% if form.buy_date %}
+                {{ form.buy_date }}
+            {% endif %}
+            {% if form.due_date %}
+                {{ form.due_date }}
+            {% endif %}
+            
+            <div class="button-group">
+                <button type="button" onclick="closeRegisterModal()" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function closeRegisterModal() {
+    if (window.opener) {
+        // Se abriu em nova janela, apenas fechar
+        window.close();
+    } else {
+        // Se for modal, redirecionar para lista
+        window.location.href = '{% url "finance:transactions_list" %}';
+    }
+}
+
+// Submit do formulário
+document.getElementById('registerForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const submitButton = this.querySelector('button[type="submit"]');
+    const originalText = submitButton.textContent;
+    
+    // Desabilita botão durante o submit
+    submitButton.disabled = true;
+    submitButton.textContent = 'Registrando...';
+    
+    fetch(this.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        // Verifica se a resposta é JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return response.json();
+        } else if (response.ok) {
+            // Se a resposta foi OK mas não é JSON, assume sucesso
+            return { success: true, message: 'Registrado com sucesso' };
+        } else {
+            // Se houve erro HTTP, retorna HTML de erro
+            return response.text().then(html => {
+                // Tenta extrair mensagens de erro do HTML se possível
+                return { success: false, message: 'Erro ao processar requisição' };
+            });
+        }
+    })
+    .then(data => {
+        if (data && data.success !== false) {
+            if (window.opener) {
+                // Se abriu em nova janela, recarregar a janela pai e fechar
+                window.opener.location.reload();
+                window.close();
+            } else {
+                // Se for modal, redirecionar para lista
+                window.location.href = '{% url "finance:transactions_list" %}';
+            }
+        } else {
+            let errorMsg = data ? data.message : 'Erro desconhecido';
+            if (data && data.errors) {
+                // Mostra erros de validação de forma mais clara
+                const errorDetails = [];
+                for (const [field, messages] of Object.entries(data.errors)) {
+                    const fieldName = field.charAt(0).toUpperCase() + field.slice(1).replace('_', ' ');
+                    errorDetails.push(fieldName + ': ' + messages.join(', '));
+                }
+                errorMsg = 'Erros de validação:\n' + errorDetails.join('\n');
+            }
+            alert('Erro ao registrar:\n' + errorMsg);
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erro ao registrar transação. Tente novamente.');
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
+    });
+});
+</script>
+</body>
+</html>

@@ -100,13 +100,16 @@
                 {% endif %}
             </div>
             
-            <div>
-                <label for="{{ form.status.id_for_label }}">{{ form.status.label }}</label>
-                {{ form.status }}
-                {% if form.status.errors %}
-                    <div>{{ form.status.errors }}</div>
-                {% endif %}
+            {% if transaction and not transaction.pay_date %}
+            <div style="margin: 15px 0;">
+                <a href="{% url 'finance:transaction_register' transaction.id %}" 
+                   class="register-btn" 
+                   style="display: inline-block; padding: 10px 20px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; cursor: pointer;"
+                   data-transaction-id="{{ transaction.id }}">
+                    Registrar
+                </a>
             </div>
+            {% endif %}
             
             {% if form.is_recurring %}
             <div>
@@ -165,11 +168,13 @@
                     {% endif %}
                 </div>
                 
+                
                 {% if has_recurring_children %}
                 <div style="margin-top: 10px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 3px;">
                     <small><strong>Atenção:</strong> Esta transação já possui parcelas geradas. Os campos de recorrência não podem ser alterados.</small>
                 </div>
                 {% endif %}
+                
             </div>
             {% endif %}
             

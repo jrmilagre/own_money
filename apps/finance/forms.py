@@ -69,7 +69,6 @@ class TransactionForm(forms.ModelForm):
             'buy_date',
             'due_date',
             'pay_date',
-            'status',
         ]
         widgets = {
             'description': forms.TextInput(attrs={'class': 'form-control'}),
@@ -82,7 +81,6 @@ class TransactionForm(forms.ModelForm):
             'buy_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'due_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'pay_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'status': forms.Select(attrs={'class': 'form-control'}),
         }
 
 

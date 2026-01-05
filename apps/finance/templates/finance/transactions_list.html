@@ -144,6 +144,11 @@
                         <td>
                             {{ transaction.description|default:"-" }}
                             <span style="font-size: 0.8em; color: #666;">(recorrente)</span>
+                            {% if parent_transaction.recurrence_interrupted %}
+                                <span style="font-size: 0.8em; color: #ff9800; margin-left: 5px;">
+                                    ⏸️ Interrompida
+                                </span>
+                            {% endif %}
                         </td>
                         <td>{{ transaction.account.name }}</td>
                         <td>{{ transaction.category.category|default:"-" }}</td>
@@ -155,8 +160,17 @@
                         </td>
                         <td>{{ transaction.get_status_display }}</td>
                         <td>
-                            <a href="{% url 'finance:transaction_update' parent_transaction.id %}">Editar</a> |
-                            <a href="{% url 'finance:transaction_delete' parent_transaction.id %}">Deletar</a>
+                            <a href="{% url 'finance:transaction_update' transaction.id %}">Editar</a> |
+                            {% if not transaction.pay_date %}
+                                <a href="{% url 'finance:transaction_register' transaction.id %}" 
+                                   class="register-btn" 
+                                   style="color: #28a745;"
+                                   data-transaction-id="{{ transaction.id }}">Registrar</a> |
+                            {% endif %}
+                            {% if parent_transaction.recurrence_end_type == 'never' and not parent_transaction.recurrence_interrupted and transaction.is_next_pending_installment %}
+                                <a href="{% url 'finance:recurring_transaction_interrupt' transaction.id %}" style="color: #ff9800;">Interromper Recorrência</a> |
+                            {% endif %}
+                            <a href="{% url 'finance:transaction_delete' transaction.id %}">Deletar</a>
                         </td>
                     </tr>
                     {% endwith %}
@@ -175,6 +189,11 @@
                                     ({{ transaction.get_current_installment }})
                                 {% endif %}
                             </span>
+                            {% if transaction.recurrence_interrupted %}
+                                <span style="font-size: 0.8em; color: #ff9800; margin-left: 5px;">
+                                    ⏸️ Interrompida
+                                </span>
+                            {% endif %}
                         </td>
                         <td>{{ transaction.account.name }}</td>
                         <td>{{ transaction.category.category|default:"-" }}</td>
@@ -187,9 +206,24 @@
                         <td>{{ transaction.get_status_display }}</td>
                         <td>
                             <a href="{% url 'finance:transaction_update' transaction.id %}">Editar</a> |
-                            {% if transaction.pay_date and transaction.has_next_recurring_installment %}
-                                <a href="{% url 'finance:recurring_transaction_undo_payment' transaction.id %}">Desfazer Pagamento</a> |
+                            {% if not transaction.pay_date %}
+                                <a href="{% url 'finance:transaction_register' transaction.id %}" 
+                                   class="register-btn" 
+                                   style="color: #28a745;"
+                                   data-transaction-id="{{ transaction.id }}">Registrar</a> |
                             {% endif %}
+                            {% if transaction.pay_date and transaction.has_next_recurring_installment %}
+                                {% with parent=transaction.get_recurring_parent %}
+                                    {% if parent.recurrence_end_type == 'after_count' %}
+                                        <a href="{% url 'finance:recurring_transaction_undo_payment' transaction.id %}">Desfazer Pagamento</a> |
+                                    {% endif %}
+                                {% endwith %}
+                            {% endif %}
+                            {% with parent=transaction.get_recurring_parent %}
+                                {% if parent.recurrence_end_type == 'never' and not parent.recurrence_interrupted and transaction.is_next_pending_installment %}
+                                    <a href="{% url 'finance:recurring_transaction_interrupt' transaction.id %}" style="color: #ff9800;">Interromper Recorrência</a> |
+                                {% endif %}
+                            {% endwith %}
                             <a href="{% url 'finance:transaction_delete' transaction.id %}">Deletar</a>
                         </td>
                     </tr>
@@ -210,6 +244,12 @@
                         <td>{{ transaction.get_status_display }}</td>
                         <td>
                             <a href="{% url 'finance:transaction_update' transaction.id %}">Editar</a> |
+                            {% if not transaction.pay_date %}
+                                <a href="{% url 'finance:transaction_register' transaction.id %}" 
+                                   class="register-btn" 
+                                   style="color: #28a745;"
+                                   data-transaction-id="{{ transaction.id }}">Registrar</a> |
+                            {% endif %}
                             <a href="{% url 'finance:transaction_delete' transaction.id %}">Deletar</a>
                         </td>
                     </tr>
@@ -223,5 +263,20 @@
             <p>Nenhuma transação cadastrada ainda.</p>
         </div>
         {% endif %}
+        
+<script>
+// Adiciona evento de clique nos botões "Registrar"
+document.addEventListener('DOMContentLoaded', function() {
+    const registerButtons = document.querySelectorAll('.register-btn');
+    registerButtons.forEach(function(button) {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const url = this.getAttribute('href');
+            // Abre em nova janela
+            window.open(url, 'Registrar Transação', 'width=600,height=400,scrollbars=yes,resizable=yes');
+        });
+    });
+});
+</script>
 {% endblock %}
 
