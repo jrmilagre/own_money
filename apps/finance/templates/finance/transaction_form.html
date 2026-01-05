@@ -33,14 +33,6 @@
             </div>
             
             <div>
-                <label for="{{ form.credit_card.id_for_label }}">{{ form.credit_card.label }}</label>
-                {{ form.credit_card }}
-                {% if form.credit_card.errors %}
-                    <div>{{ form.credit_card.errors }}</div>
-                {% endif %}
-            </div>
-            
-            <div>
                 <label for="{{ form.transaction_type.id_for_label }}">{{ form.transaction_type.label }}</label>
                 {{ form.transaction_type }}
                 {% if form.transaction_type.errors %}

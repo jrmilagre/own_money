@@ -19,6 +19,11 @@ class AccountForm(forms.ModelForm):
             'comment',
             'is_favorite',
             'is_closed',
+            'cardholder',
+            'card_number',
+            'expiration_date',
+            'cvv',
+            'brand',
         ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -33,7 +38,21 @@ class AccountForm(forms.ModelForm):
             'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'is_favorite': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'is_closed': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'cardholder': forms.TextInput(attrs={'class': 'form-control'}),
+            'card_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'expiration_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'cvv': forms.TextInput(attrs={'class': 'form-control'}),
+            'brand': forms.Select(attrs={'class': 'form-control'}),
         }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Tornar campos de cartão opcionais
+        self.fields['cardholder'].required = False
+        self.fields['card_number'].required = False
+        self.fields['expiration_date'].required = False
+        self.fields['cvv'].required = False
+        self.fields['brand'].required = False
 
 
 class TransactionForm(forms.ModelForm):
@@ -42,7 +61,6 @@ class TransactionForm(forms.ModelForm):
         fields = [
             'description',
             'account',
-            'credit_card',
             'transaction_type',
             'operation_type',
             'value',
@@ -56,7 +74,6 @@ class TransactionForm(forms.ModelForm):
         widgets = {
             'description': forms.TextInput(attrs={'class': 'form-control'}),
             'account': forms.Select(attrs={'class': 'form-control'}),
-            'credit_card': forms.Select(attrs={'class': 'form-control'}),
             'transaction_type': forms.Select(attrs={'class': 'form-control'}),
             'operation_type': forms.Select(attrs={'class': 'form-control'}),
             'value': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
@@ -177,7 +194,6 @@ class CompositeTransactionForm(forms.Form):
             line_type = 'transfer' if is_transfer else 'normal'
             category_id = self.data.get(f'line_{i}_category')
             destination_account_id = self.data.get(f'line_{i}_destination_account')
-            credit_card_id = self.data.get(f'line_{i}_credit_card')
             description = self.data.get(f'line_{i}_description', '')
             
             # Valida valor
@@ -238,22 +254,12 @@ class CompositeTransactionForm(forms.Form):
                     continue
                 destination_account = None
             
-            # Processa cartão de crédito (opcional)
-            credit_card = None
-            if credit_card_id:
-                try:
-                    from .models import CreditCard
-                    credit_card = CreditCard.objects.get(id=credit_card_id)
-                except CreditCard.DoesNotExist:
-                    pass  # Ignora se não encontrar
-            
             lines.append({
                 'value': value,
                 'transaction_type': transaction_type,
                 'line_type': line_type,
                 'category': category,
                 'destination_account': destination_account,
-                'credit_card': credit_card,
                 'description': description,
             })
         

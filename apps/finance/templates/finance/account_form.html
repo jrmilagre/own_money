@@ -108,10 +108,78 @@
                 {% endif %}
             </div>
             
+            <div id="card-fields" style="display: none;">
+                <h2>Informações de Cartão de Crédito</h2>
+                
+                <div>
+                    <label for="{{ form.cardholder.id_for_label }}">{{ form.cardholder.label }}</label>
+                    {{ form.cardholder }}
+                    {% if form.cardholder.errors %}
+                        <div>{{ form.cardholder.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div>
+                    <label for="{{ form.card_number.id_for_label }}">{{ form.card_number.label }}</label>
+                    {{ form.card_number }}
+                    {% if form.card_number.help_text %}
+                        <small>{{ form.card_number.help_text }}</small>
+                    {% endif %}
+                    {% if form.card_number.errors %}
+                        <div>{{ form.card_number.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div>
+                    <label for="{{ form.expiration_date.id_for_label }}">{{ form.expiration_date.label }}</label>
+                    {{ form.expiration_date }}
+                    {% if form.expiration_date.errors %}
+                        <div>{{ form.expiration_date.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div>
+                    <label for="{{ form.cvv.id_for_label }}">{{ form.cvv.label }}</label>
+                    {{ form.cvv }}
+                    {% if form.cvv.errors %}
+                        <div>{{ form.cvv.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div>
+                    <label for="{{ form.brand.id_for_label }}">{{ form.brand.label }}</label>
+                    {{ form.brand }}
+                    {% if form.brand.errors %}
+                        <div>{{ form.brand.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            
             <div>
                 <button type="submit">Salvar</button>
                 <a href="{% url 'finance:accounts_list' %}">Cancelar</a>
             </div>
         </form>
+        
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const accountTypeSelect = document.getElementById('{{ form.account_type.id_for_label }}');
+                const cardFields = document.getElementById('card-fields');
+                
+                function toggleCardFields() {
+                    if (accountTypeSelect.value === 'CARD') {
+                        cardFields.style.display = 'block';
+                    } else {
+                        cardFields.style.display = 'none';
+                    }
+                }
+                
+                // Verifica o valor inicial
+                toggleCardFields();
+                
+                // Adiciona listener para mudanças
+                accountTypeSelect.addEventListener('change', toggleCardFields);
+            });
+        </script>
 {% endblock %}
 

@@ -66,7 +66,6 @@
                             <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Categoria / Conta Destino</th>
                             <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Tipo</th>
                             <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Valor</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Cartão de Crédito</th>
                             <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Descrição</th>
                             <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Ações</th>
                         </tr>
@@ -101,18 +100,6 @@
     <script>
         let lineCounter = 0;
         
-        // Cartões agrupados por conta
-        const creditCardsByAccountFixed = {};
-        {% for credit_card in credit_cards %}
-        if (!creditCardsByAccountFixed[{{ credit_card.account.id }}]) {
-            creditCardsByAccountFixed[{{ credit_card.account.id }}] = [];
-        }
-        creditCardsByAccountFixed[{{ credit_card.account.id }}].push({
-            id: {{ credit_card.id }},
-            name: '{{ credit_card.cardholder|escapejs }} - {{ credit_card.card_number|escapejs }} ({{ credit_card.account.name|escapejs }})'
-        });
-        {% endfor %}
-        
         function formatCurrency(value) {
             return new Intl.NumberFormat('pt-BR', {
                 style: 'currency',
@@ -141,43 +128,6 @@
             });
             
             document.getElementById('net-balance').textContent = formatCurrency(total);
-        }
-        
-        function updateCreditCardSelects(accountId) {
-            if (!accountId) {
-                return;
-            }
-            
-            // Converte accountId para número para garantir correspondência com as chaves do objeto
-            const accountIdNum = parseInt(accountId, 10);
-            const creditCardSelects = document.querySelectorAll('.credit-card-select');
-            const cards = creditCardsByAccountFixed[accountIdNum] || [];
-            
-            creditCardSelects.forEach(select => {
-                const currentValue = select.value;
-                // Limpa opções exceto a primeira (Selecione)
-                while (select.options.length > 1) {
-                    select.remove(1);
-                }
-                
-                // Adiciona cartões da conta selecionada
-                cards.forEach(card => {
-                    const option = document.createElement('option');
-                    option.value = card.id;
-                    option.textContent = card.name;
-                    select.appendChild(option);
-                });
-                
-                // Restaura valor anterior se ainda existir
-                if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
-                    select.value = currentValue;
-                } else {
-                    select.value = '';
-                }
-                
-                // Atualiza data-account-id
-                select.setAttribute('data-account-id', accountId);
-            });
         }
         
         function toggleLineFields(lineElement) {
@@ -272,11 +222,6 @@
                            class="form-control" style="width: 120px;" required value="${lineData ? lineData.value : ''}">
                 </td>
                 <td style="padding: 8px; border: 1px solid #ddd;">
-                    <select name="line_${lineIndex}_credit_card" class="form-control credit-card-select" data-account-id="">
-                        <option value="">Selecione</option>
-                    </select>
-                </td>
-                <td style="padding: 8px; border: 1px solid #ddd;">
                     <input type="text" name="line_${lineIndex}_description" 
                            class="form-control" placeholder="Descrição (opcional)" maxlength="500" style="width: 200px;" value="${lineData ? (lineData.description || '') : ''}">
                 </td>
@@ -320,13 +265,6 @@
             
             tbody.appendChild(lineRow);
             
-            // Atualiza cartão de crédito quando linha é criada (após anexar ao DOM)
-            const accountSelect = document.getElementById('id_account');
-            if (accountSelect && accountSelect.value) {
-                // Atualiza todos os selects de cartão, incluindo o recém-criado
-                updateCreditCardSelects(accountSelect.value);
-            }
-            
             // Se tiver dados, preenche os valores e aplica toggle
             if (lineData) {
                 // Preenche categoria se houver
@@ -347,18 +285,6 @@
                 
                 // Aplica toggle para mostrar/esconder campos corretos baseado no checkbox
                 toggleLineFields(lineRow);
-                
-                // Preenche cartão de crédito se houver (após atualizar selects)
-                if (lineData && lineData.credit_card_id) {
-                    const accountSelect = document.getElementById('id_account');
-                    if (accountSelect && accountSelect.value) {
-                        updateCreditCardSelects(accountSelect.value);
-                        const creditCardSelect = lineRow.querySelector('select[name*="_credit_card"]');
-                        if (creditCardSelect) {
-                            creditCardSelect.value = lineData.credit_card_id;
-                        }
-                    }
-                }
             }
         }
         
@@ -369,18 +295,6 @@
             addBtn.addEventListener('click', function() {
                 addLine();
             });
-            
-            // Atualiza cartões de crédito quando conta principal muda
-            if (accountSelect) {
-                accountSelect.addEventListener('change', function() {
-                    updateCreditCardSelects(this.value);
-                });
-                
-                // Atualiza na carga inicial se houver conta selecionada
-                if (accountSelect.value) {
-                    updateCreditCardSelects(accountSelect.value);
-                }
-            }
             
             // Se estiver em modo edição, preenche as linhas existentes
             {% if is_edit and existing_lines_json %}
