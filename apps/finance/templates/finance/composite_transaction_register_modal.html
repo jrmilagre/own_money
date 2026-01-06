@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Registrar Transação Composta</title>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, input[type="date"], input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .error {
+            color: red;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .button-group {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 8px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .net-balance {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e7f3ff;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h2>Registrar Transação Composta</h2>
+    
+    <form id="register-form" method="post">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="id_account">Conta:</label>
+            <select name="account" id="id_account" required>
+                <option value="">Selecione</option>
+                {% for account in accounts %}
+                <option value="{{ account.id }}" {% if account.id == transaction.account.id %}selected{% endif %}>{{ account.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="id_beneficiary">Beneficiário:</label>
+            <select name="beneficiary" id="id_beneficiary">
+                <option value="">Nenhum</option>
+                {% for beneficiary in beneficiaries %}
+                <option value="{{ beneficiary.id }}" {% if transaction.beneficiary and beneficiary.id == transaction.beneficiary.id %}selected{% endif %}>{{ beneficiary.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="id_pay_date">Data do Pagamento Efetivo:</label>
+            <input type="date" name="pay_date" id="id_pay_date" value="{% if pay_date %}{{ pay_date|date:'Y-m-d' }}{% endif %}">
+        </div>
+        
+        <div class="form-group">
+            <h3>Linhas de Transação</h3>
+            <button type="button" id="add-line-btn" style="padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 15px;">
+                + Adicionar Linha
+            </button>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Transferência</th>
+                        <th>Categoria / Conta Destino</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                        <th>Descrição</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="lines-tbody">
+                    <!-- Linhas serão adicionadas aqui via JavaScript -->
+                </tbody>
+            </table>
+            
+            <div class="net-balance">
+                <strong>Saldo Líquido: <span id="net-balance">R$ 0,00</span></strong>
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button type="submit" class="btn-primary">Registrar</button>
+            <button type="button" class="btn-secondary" onclick="window.close()">Cancelar</button>
+        </div>
+    </form>
+    
+    <script>
+        let lineCounter = 0;
+        const categories = [
+            {% for category in categories %}
+            {id: {{ category.id }}, name: "{{ category.category }} - {{ category.subcategory }}", default_type: "{{ category.default_transaction_type }}"}{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ];
+        const accounts = [
+            {% for account in accounts %}
+            {id: {{ account.id }}, name: "{{ account.name }}"}{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ];
+        const existingLines = {{ lines_data_json|safe }};
+        
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+        
+        function calculateNetBalance() {
+            let total = 0;
+            document.querySelectorAll('.transaction-line').forEach(function(lineRow) {
+                const valueInput = lineRow.querySelector('input[name*="_value"]');
+                const typeSelect = lineRow.querySelector('select[name*="_transaction_type"]');
+                
+                if (valueInput && typeSelect && valueInput.value) {
+                    const value = parseFloat(valueInput.value) || 0;
+                    const type = typeSelect.value;
+                    
+                    if (type === 'CR') {
+                        total += value;
+                    } else if (type === 'DB') {
+                        total -= value;
+                    }
+                }
+            });
+            
+            document.getElementById('net-balance').textContent = formatCurrency(total);
+        }
+        
+        function toggleLineFields(lineElement) {
+            const transferCheckbox = lineElement.querySelector('input[name*="_is_transfer"]');
+            const categorySelect = lineElement.querySelector('.category-select');
+            const destinationAccountSelect = lineElement.querySelector('.destination-account-select');
+            const transactionTypeSelect = lineElement.querySelector('.transaction-type-select');
+            
+            if (transferCheckbox) {
+                const isTransfer = transferCheckbox.checked;
+                
+                if (isTransfer) {
+                    if (categorySelect) categorySelect.style.display = 'none';
+                    if (destinationAccountSelect) destinationAccountSelect.style.display = 'block';
+                    if (transactionTypeSelect) {
+                        transactionTypeSelect.value = 'DB';
+                        transactionTypeSelect.style.backgroundColor = '#e9ecef';
+                        transactionTypeSelect.style.cursor = 'not-allowed';
+                        transactionTypeSelect.disabled = true;
+                        const hiddenName = transactionTypeSelect.name;
+                        let hiddenInput = lineElement.querySelector(`input[name="${hiddenName}"]`);
+                        if (!hiddenInput) {
+                            hiddenInput = document.createElement('input');
+                            hiddenInput.type = 'hidden';
+                            hiddenInput.name = hiddenName;
+                            hiddenInput.value = 'DB';
+                            lineElement.appendChild(hiddenInput);
+                        } else {
+                            hiddenInput.value = 'DB';
+                        }
+                    }
+                } else {
+                    if (categorySelect) categorySelect.style.display = 'block';
+                    if (destinationAccountSelect) destinationAccountSelect.style.display = 'none';
+                    if (transactionTypeSelect) {
+                        transactionTypeSelect.style.backgroundColor = '';
+                        transactionTypeSelect.style.cursor = '';
+                        transactionTypeSelect.disabled = false;
+                        const hiddenName = transactionTypeSelect.name;
+                        const hiddenInput = lineElement.querySelector(`input[name="${hiddenName}"]`);
+                        if (hiddenInput) {
+                            hiddenInput.remove();
+                        }
+                    }
+                }
+            }
+        }
+        
+        function addLine(lineData = null) {
+            const tbody = document.getElementById('lines-tbody');
+            const lineIndex = lineCounter++;
+            
+            const lineRow = document.createElement('tr');
+            lineRow.className = 'transaction-line';
+            lineRow.innerHTML = `
+                <td style="text-align: center;">
+                    <input type="checkbox" name="line_${lineIndex}_is_transfer" class="transfer-checkbox" 
+                           ${lineData && lineData.line_type === 'transfer' ? 'checked' : ''}>
+                </td>
+                <td class="category-cell">
+                    <div>
+                        <select name="line_${lineIndex}_category" class="category-select" style="display: ${lineData && lineData.line_type === 'transfer' ? 'none' : 'block'};">
+                            <option value="">Selecione</option>
+                            ${categories.map(cat => 
+                                `<option value="${cat.id}" data-default-type="${cat.default_type}" ${lineData && lineData.category_id == cat.id ? 'selected' : ''}>${cat.name}</option>`
+                            ).join('')}
+                        </select>
+                        <select name="line_${lineIndex}_destination_account" class="destination-account-select" style="display: ${lineData && lineData.line_type === 'transfer' ? 'block' : 'none'};">
+                            <option value="">Selecione</option>
+                            ${accounts.map(acc => 
+                                `<option value="${acc.id}" ${lineData && lineData.destination_account_id == acc.id ? 'selected' : ''}>${acc.name}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                </td>
+                <td>
+                    <select name="line_${lineIndex}_transaction_type" class="transaction-type-select" required>
+                        <option value="">Selecione</option>
+                        <option value="CR" ${lineData && lineData.transaction_type === 'CR' ? 'selected' : ''}>Crédito</option>
+                        <option value="DB" ${lineData && lineData.transaction_type === 'DB' ? 'selected' : ''}>Débito</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="number" name="line_${lineIndex}_value" step="0.01" min="0.01" 
+                           class="form-control" style="width: 120px;" required value="${lineData ? lineData.value : ''}">
+                </td>
+                <td>
+                    <input type="text" name="line_${lineIndex}_description" 
+                           class="form-control" placeholder="Descrição (opcional)" maxlength="500" style="width: 200px;" value="${lineData ? (lineData.description || '') : ''}">
+                </td>
+                <td>
+                    <button type="button" class="remove-line-btn btn-danger" style="padding: 5px 10px;">Remover</button>
+                </td>
+            `;
+            
+            const valueInput = lineRow.querySelector('input[name*="_value"]');
+            const typeSelect = lineRow.querySelector('select[name*="_transaction_type"]');
+            const transferCheckbox = lineRow.querySelector('input[name*="_is_transfer"]');
+            const categorySelect = lineRow.querySelector('select[name*="_category"]');
+            const removeBtn = lineRow.querySelector('.remove-line-btn');
+            
+            valueInput.addEventListener('input', calculateNetBalance);
+            typeSelect.addEventListener('change', calculateNetBalance);
+            transferCheckbox.addEventListener('change', function() {
+                toggleLineFields(lineRow);
+                calculateNetBalance();
+            });
+            
+            if (categorySelect) {
+                categorySelect.addEventListener('change', function() {
+                    if (!transferCheckbox.checked && this.value) {
+                        const selectedOption = this.options[this.selectedIndex];
+                        const defaultType = selectedOption.getAttribute('data-default-type');
+                        if (defaultType && typeSelect) {
+                            typeSelect.value = defaultType;
+                            calculateNetBalance();
+                        }
+                    }
+                });
+            }
+            
+            removeBtn.addEventListener('click', function() {
+                lineRow.remove();
+                calculateNetBalance();
+            });
+            
+            toggleLineFields(lineRow);
+            tbody.appendChild(lineRow);
+            calculateNetBalance();
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const addBtn = document.getElementById('add-line-btn');
+            
+            addBtn.addEventListener('click', function() {
+                addLine();
+            });
+            
+            // Preenche linhas existentes
+            if (existingLines && Array.isArray(existingLines) && existingLines.length > 0) {
+                existingLines.forEach(function(lineData) {
+                    addLine(lineData);
+                });
+            } else {
+                addLine();
+            }
+            
+            calculateNetBalance();
+        });
+        
+        document.getElementById('register-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            fetch(this.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (window.opener) {
+                        window.opener.location.reload();
+                    }
+                    window.close();
+                } else {
+                    // Remove erros anteriores
+                    document.querySelectorAll('.error').forEach(el => el.remove());
+                    
+                    // Mostra erros gerais
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'error';
+                    errorDiv.textContent = data.message || 'Erro ao registrar';
+                    document.body.insertBefore(errorDiv, document.getElementById('register-form'));
+                    
+                    // Mostra erros de campos específicos
+                    if (data.errors) {
+                        for (const [field, errors] of Object.entries(data.errors)) {
+                            if (field === 'lines') {
+                                // Erros de linhas
+                                errors.forEach(errorMsg => {
+                                    const errorDiv = document.createElement('div');
+                                    errorDiv.className = 'error';
+                                    errorDiv.textContent = errorMsg;
+                                    document.getElementById('register-form').appendChild(errorDiv);
+                                });
+                            } else {
+                                const fieldElement = document.getElementById('id_' + field);
+                                if (fieldElement) {
+                                    const errorMsg = document.createElement('div');
+                                    errorMsg.className = 'error';
+                                    errorMsg.textContent = Array.isArray(errors) ? errors.join(', ') : errors;
+                                    fieldElement.parentNode.appendChild(errorMsg);
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Erro:', error);
+                alert('Erro ao registrar transação composta.');
+            });
+        });
+    </script>
+</body>
+</html>

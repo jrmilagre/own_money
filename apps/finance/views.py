@@ -4,7 +4,7 @@ from django.contrib import messages
 from decimal import Decimal
 import json
 from .models import Account, Transaction, Beneficiary, Category
-from .forms import AccountForm, TransactionForm, TransferTransactionForm, CompositeTransactionForm, RecurringTransactionForm
+from .forms import AccountForm, TransactionForm, TransferTransactionForm, CompositeTransactionForm, RecurringTransactionForm, RecurringCompositeTransactionForm
 
 
 def finance_home(request):
@@ -398,7 +398,15 @@ def transaction_update(request, transaction_id):
         return redirect('finance:transfer_update', transaction_id=transaction_id)
     
     # Se for uma transação composta, redireciona para o formulário específico
-    if transaction.parent_type == 'composite' or transaction.child_transactions.filter(parent_type='composite').exists():
+    # Verifica se é composta recorrente (raiz ou filha) ou se é pai de compostas ou filha de composta
+    # is_composite_recurring() verifica se é recorrente E tem filhas compostas
+    # is_composite_parent() verifica se tem filhas com parent_type='composite'
+    # parent_type == 'composite' verifica se é filha de uma composta
+    if transaction.parent_type == 'composite':
+        # É uma linha filha, redireciona para o pai
+        return redirect('finance:composite_transaction_update', transaction_id=transaction.parent_transaction.id)
+    elif transaction.is_composite_recurring() or transaction.is_composite_parent():
+        # É a composta pai (pode ser recorrente)
         return redirect('finance:composite_transaction_update', transaction_id=transaction_id)
     
     # Para transações recorrentes, usa RecurringTransactionForm
@@ -470,7 +478,15 @@ def transaction_delete(request, transaction_id):
         return redirect('finance:transfer_delete', transaction_id=transaction_id)
     
     # Se for uma transação composta, redireciona para o handler específico
-    if transaction.parent_type == 'composite' or transaction.child_transactions.filter(parent_type='composite').exists():
+    # Verifica se é composta recorrente (raiz ou filha) ou se é pai de compostas ou filha de composta
+    # is_composite_recurring() verifica se é recorrente E tem filhas compostas
+    # is_composite_parent() verifica se tem filhas com parent_type='composite'
+    # parent_type == 'composite' verifica se é filha de uma composta
+    if transaction.parent_type == 'composite':
+        # É uma linha filha, redireciona para o pai
+        return redirect('finance:composite_transaction_delete', transaction_id=transaction.parent_transaction.id)
+    elif transaction.is_composite_recurring() or transaction.is_composite_parent():
+        # É a composta pai (pode ser recorrente)
         return redirect('finance:composite_transaction_delete', transaction_id=transaction_id)
     
     # Lógica especial para transações recorrentes
@@ -666,12 +682,13 @@ def composite_transaction_create(request):
     A primeira transação será a "pai" e as demais serão filhas com parent_type='composite'.
     """
     if request.method == 'POST':
-        form = CompositeTransactionForm(request.POST)
+        form = RecurringCompositeTransactionForm(request.POST)
         if form.is_valid():
             account = form.cleaned_data['account']
             buy_date = form.cleaned_data['buy_date']
             pay_date = form.cleaned_data.get('pay_date')
             lines = form.cleaned_data['lines']
+            is_recurring = form.cleaned_data.get('is_recurring', False)
             
             # Determina status baseado em pay_date
             status = 'registrado' if pay_date else 'pendente'
@@ -707,6 +724,25 @@ def composite_transaction_create(request):
                 # Primeira transação é a pai, demais são filhas
                 if transaction_count == 0:
                     parent_transaction = transaction
+                    # Configura recorrência se marcada
+                    if is_recurring:
+                        parent_transaction.is_recurring = True
+                        parent_transaction.recurrence_type = form.cleaned_data.get('recurrence_type')
+                        parent_transaction.recurrence_interval = form.cleaned_data.get('recurrence_interval', 1)
+                        parent_transaction.recurrence_start_date = form.cleaned_data.get('recurrence_start_date')
+                        parent_transaction.recurrence_end_type = form.cleaned_data.get('recurrence_end_type', 'never')
+                        parent_transaction.recurrence_end_count = form.cleaned_data.get('recurrence_end_count')
+                        parent_transaction.recurrence_sequence = 1
+                        # Define due_date como recurrence_start_date se não foi preenchido
+                        if not parent_transaction.due_date and parent_transaction.recurrence_start_date:
+                            parent_transaction.due_date = parent_transaction.recurrence_start_date
+                        # Atualiza descrição com número da parcela
+                        base_description = parent_transaction.description or f"Transação Composta #{parent_transaction.id}"
+                        if parent_transaction.recurrence_end_type == 'after_count' and parent_transaction.recurrence_end_count:
+                            parent_transaction.description = f"{base_description} - 01/{parent_transaction.recurrence_end_count:02d}"
+                        else:
+                            parent_transaction.description = f"{base_description} - 1"
+                        parent_transaction.save()
                 else:
                     transaction.parent_transaction = parent_transaction
                     transaction.parent_type = 'composite'
@@ -741,7 +777,7 @@ def composite_transaction_create(request):
             )
             return redirect('finance:transactions_list')
     else:
-        form = CompositeTransactionForm()
+        form = RecurringCompositeTransactionForm()
     
     # Prepara dados para o template (categorias e contas para os selects)
     categories = Category.objects.all().order_by('category', 'subcategory')
@@ -766,8 +802,8 @@ def composite_transaction_update(request, transaction_id):
     if transaction.parent_type == 'composite':
         # É uma transação filha, busca a pai
         parent_transaction = transaction.parent_transaction
-    elif transaction.child_transactions.filter(parent_type='composite').exists():
-        # É a transação pai
+    elif transaction.is_composite_parent():
+        # É a transação pai (pode ser composta recorrente com parent_type='recurring')
         parent_transaction = transaction
     else:
         messages.error(request, 'Transação não é uma transação composta válida.')
@@ -943,6 +979,7 @@ def composite_transaction_update(request, transaction_id):
 def composite_transaction_delete(request, transaction_id):
     """
     Deleta uma transação composta, removendo todas as transações relacionadas.
+    Para transações compostas recorrentes, preserva parcelas registradas e permite promover primeira filha a raiz.
     """
     transaction = get_object_or_404(Transaction, id=transaction_id)
     
@@ -950,13 +987,101 @@ def composite_transaction_delete(request, transaction_id):
     if transaction.parent_type == 'composite':
         # É uma transação filha, busca a pai
         parent_transaction = transaction.parent_transaction
-    elif transaction.child_transactions.filter(parent_type='composite').exists():
-        # É a transação pai
+    elif transaction.is_composite_parent():
+        # É a transação pai (pode ser composta recorrente com parent_type='recurring')
         parent_transaction = transaction
     else:
         messages.error(request, 'Transação não é uma transação composta válida.')
         return redirect('finance:transactions_list')
     
+    # Verifica se é transação composta recorrente
+    is_recurring = parent_transaction.is_recurring
+    
+    # Lógica especial para transações compostas recorrentes
+    if is_recurring:
+        if parent_transaction.parent_type == 'recurring':
+            # É uma parcela filha recorrente
+            if parent_transaction.status == 'registrado' or parent_transaction.pay_date:
+                messages.error(request, 'Não é possível deletar uma parcela composta recorrente já registrada.')
+                return redirect('finance:transactions_list')
+            else:
+                # Parcela pendente - pode deletar
+                if request.method == 'POST':
+                    # Obtém a transação pai da recorrência para reorganizar sequências depois
+                    recurring_parent = parent_transaction.get_recurring_parent()
+                    
+                    # Identifica todas as parcelas subsequentes (com sequence maior)
+                    subsequent_installments = parent_transaction.get_subsequent_installments()
+                    
+                    # Deleta apenas as parcelas subsequentes pendentes
+                    pending_subsequent = [s for s in subsequent_installments if not s.pay_date]
+                    pending_count = len(pending_subsequent)
+                    
+                    # Deleta a parcela atual e todas as suas transações (pai + filhas compostas)
+                    # Primeiro deleta as filhas compostas
+                    composite_children = parent_transaction.child_transactions.filter(parent_type='composite')
+                    composite_children.delete()
+                    # Deleta transações de crédito de transferências
+                    for child in composite_children:
+                        if child.operation_type == 'transfer' and child.destination_account:
+                            Transaction.objects.filter(
+                                account=child.destination_account,
+                                destination_account=parent_transaction.account,
+                                operation_type='transfer',
+                                transaction_type='CR',
+                                buy_date=parent_transaction.buy_date
+                            ).delete()
+                    # Deleta a parcela atual
+                    parent_transaction.delete()
+                    
+                    # Deleta parcelas subsequentes pendentes
+                    for subsequent in pending_subsequent:
+                        # Deleta todas as transações da composta subsequente
+                        composite_children_sub = subsequent.child_transactions.filter(parent_type='composite')
+                        composite_children_sub.delete()
+                        subsequent.delete()
+                    
+                    # Reorganiza as sequências das parcelas restantes
+                    recurring_parent.reorganize_sequences()
+                    
+                    messages.success(request, f'Parcela composta deletada. {pending_count} parcela(s) subsequente(s) pendente(s) também foram deletada(s).')
+                    return redirect('finance:transactions_list')
+        else:
+            # É a transação pai recorrente (raiz)
+            if request.method == 'POST':
+                # Verifica se há parcelas filhas (registradas ou pendentes)
+                all_children = parent_transaction.child_transactions.filter(parent_type='recurring')
+                total_children_count = all_children.count()
+                
+                if total_children_count > 0:
+                    # Conta parcelas antes da promoção
+                    pending_before = [c for c in all_children if not c.pay_date]
+                    registered_before = [c for c in all_children if c.pay_date]
+                    
+                    # Promove a primeira parcela filha a raiz antes de deletar
+                    first_child = parent_transaction.promote_first_child_to_root()
+                    
+                    if first_child:
+                        # Deleta apenas a transação pai original
+                        # Todas as filhas compostas já foram preservadas na primeira filha
+                        parent_transaction.delete()
+                        
+                        messages.success(
+                            request,
+                            f'Transação composta pai deletada. {len(registered_before)} parcela(s) registrada(s) e {len(pending_before)} parcela(s) pendente(s) foram preservadas. A primeira parcela filha foi promovida a raiz.'
+                        )
+                    else:
+                        messages.error(request, 'Erro ao promover primeira parcela filha.')
+                    return redirect('finance:transactions_list')
+                else:
+                    # Não há parcelas filhas, pode deletar normalmente
+                    composite_children = parent_transaction.child_transactions.filter(parent_type='composite')
+                    composite_children.delete()
+                    parent_transaction.delete()
+                    messages.success(request, 'Transação composta deletada com sucesso!')
+                    return redirect('finance:transactions_list')
+    
+    # Lógica normal para transações compostas não recorrentes
     # Conta quantas transações serão deletadas
     child_count = parent_transaction.child_transactions.filter(parent_type='composite').count()
     total_count = child_count + 1  # +1 para a transação pai
@@ -993,6 +1118,123 @@ def composite_transaction_delete(request, transaction_id):
     }
     
     return render(request, 'finance/composite_transaction_delete.html', context)
+
+
+def composite_transaction_skip(request, transaction_id):
+    """
+    Salta uma parcela pendente de transação composta recorrente infinita,
+    deletando a parcela atual e gerando automaticamente a próxima.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    # Validações
+    if not transaction.is_composite_parent():
+        messages.error(request, 'Esta transação não é uma transação composta.')
+        return redirect('finance:transactions_list')
+    
+    if not transaction.is_recurring:
+        messages.error(request, 'Esta transação não é recorrente.')
+        return redirect('finance:transactions_list')
+    
+    # Verifica se é recorrência infinita
+    parent = transaction.get_recurring_parent()
+    if parent.recurrence_end_type != 'never':
+        messages.error(request, 'A funcionalidade "Saltar" está disponível apenas para transações com recorrência infinita.')
+        return redirect('finance:transactions_list')
+    
+    # Verifica se está interrompida
+    if parent.recurrence_interrupted:
+        messages.error(request, 'Esta recorrência está interrompida e não pode gerar novas parcelas.')
+        return redirect('finance:transactions_list')
+    
+    # Verifica se é parcela pendente
+    if transaction.pay_date:
+        messages.error(request, 'Apenas parcelas pendentes podem ser saltadas.')
+        return redirect('finance:transactions_list')
+    
+    # Verifica se é parcela filha (não raiz)
+    if transaction.parent_type != 'recurring':
+        messages.error(request, 'A funcionalidade "Saltar" está disponível apenas para parcelas filhas.')
+        return redirect('finance:transactions_list')
+    
+    if request.method == 'POST':
+        # Obtém a parcela anterior na recorrência
+        current_sequence = transaction.get_current_installment()
+        recurring_parent = transaction.get_recurring_parent()
+        
+        # Busca a parcela anterior (sequence menor)
+        previous_installment = None
+        if current_sequence > 1:
+            # Busca a parcela com sequence = current_sequence - 1
+            # Se current_sequence == 2, a anterior é a raiz (sequence 1)
+            if current_sequence == 2:
+                previous_installment = recurring_parent
+            else:
+                previous_installment = recurring_parent.child_transactions.filter(
+                    parent_type='recurring',
+                    recurrence_sequence=current_sequence - 1
+                ).first()
+        
+        # Gera a próxima parcela composta usando a parcela anterior ANTES de deletar
+        # Isso garante que a nova parcela seja gerada com a sequência correta
+        new_installment_generated = False
+        if previous_installment:
+            # Verifica se a parcela anterior pode gerar próxima
+            if previous_installment.can_generate_next():
+                # Verifica se não existe próxima parcela já gerada
+                # A próxima parcela seria a que estamos deletando, então não deve existir outra
+                existing_next = previous_installment.child_transactions.filter(
+                    parent_type='recurring'
+                ).exclude(id=transaction.id).first()
+                
+                if not existing_next:
+                    previous_installment.generate_next_composite_installment()
+                    new_installment_generated = True
+        
+        # Deleta a parcela atual e todas as suas filhas compostas
+        # Primeiro deleta as filhas compostas
+        composite_children = transaction.child_transactions.filter(parent_type='composite')
+        
+        # Deleta transações de crédito de transferências relacionadas
+        for child in composite_children:
+            if child.operation_type == 'transfer' and child.destination_account:
+                Transaction.objects.filter(
+                    account=child.destination_account,
+                    destination_account=transaction.account,
+                    operation_type='transfer',
+                    transaction_type='CR',
+                    buy_date=transaction.buy_date
+                ).delete()
+        
+        composite_children.delete()
+        
+        # Deleta a parcela atual
+        transaction.delete()
+        
+        # Reorganiza as sequências das parcelas restantes
+        recurring_parent.reorganize_sequences()
+        
+        # Mensagem de sucesso
+        if new_installment_generated:
+            messages.success(request, 'Parcela saltada e próxima parcela gerada automaticamente.')
+        elif previous_installment:
+            if previous_installment.can_generate_next():
+                messages.success(request, 'Parcela saltada. A próxima parcela já existe.')
+            else:
+                messages.success(request, 'Parcela saltada. Não foi possível gerar próxima parcela (recorrência interrompida ou limite atingido).')
+        else:
+            messages.success(request, 'Parcela saltada.')
+        
+        return redirect('finance:transactions_list')
+    
+    # GET - mostra confirmação
+    context = {
+        'transaction': transaction,
+        'parent': parent,
+        'current_sequence': transaction.get_current_installment(),
+    }
+    
+    return render(request, 'finance/composite_transaction_skip.html', context)
 
 
 def recurring_transaction_undo_payment(request, transaction_id):
@@ -1159,4 +1401,367 @@ def transaction_register(request, transaction_id):
     }
     
     return render(request, 'finance/transaction_register_modal.html', context)
+
+
+def composite_transaction_register(request, transaction_id):
+    """
+    Registra o pagamento de uma transação composta, permitindo editar account, beneficiary, pay_date e linhas.
+    Aplica pay_date a todas as transações da composta (pai + filhas).
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    
+    # Verifica se é transação composta pai
+    if not transaction.is_composite_parent():
+        messages.error(request, 'Esta não é uma transação composta válida.')
+        return redirect('finance:transactions_list')
+    
+    # Busca todas as transações filhas
+    child_transactions = transaction.child_transactions.filter(parent_type='composite').order_by('id')
+    
+    if request.method == 'POST':
+        # Processa dados do formulário
+        account_id = request.POST.get('account')
+        beneficiary_id = request.POST.get('beneficiary')
+        pay_date_str = request.POST.get('pay_date')
+        
+        # Valida conta
+        try:
+            account = Account.objects.get(id=account_id)
+        except (Account.DoesNotExist, ValueError, TypeError):
+            from django.http import JsonResponse
+            return JsonResponse({
+                'success': False,
+                'message': 'Conta inválida.',
+                'errors': {'account': ['Conta é obrigatória.']}
+            }, status=400)
+        
+        # Processa beneficiário (opcional)
+        beneficiary = None
+        if beneficiary_id:
+            try:
+                beneficiary = Beneficiary.objects.get(id=beneficiary_id)
+            except (Beneficiary.DoesNotExist, ValueError, TypeError):
+                pass
+        
+        # Processa pay_date
+        pay_date = None
+        if pay_date_str:
+            try:
+                from datetime import datetime
+                pay_date = datetime.strptime(pay_date_str, '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                pass
+        
+        # Se pay_date não foi preenchido e due_date existe, usa due_date
+        if not pay_date and transaction.due_date:
+            pay_date = transaction.due_date
+        
+        # Determina status baseado em pay_date
+        status = 'registrado' if pay_date else 'pendente'
+        
+        # Processa linhas do formulário
+        lines = []
+        line_count = 0
+        
+        # Conta quantas linhas foram enviadas
+        while True:
+            value_key = f'line_{line_count}_value'
+            if value_key not in request.POST:
+                break
+            line_count += 1
+        
+        if line_count == 0:
+            from django.http import JsonResponse
+            return JsonResponse({
+                'success': False,
+                'message': 'Adicione pelo menos uma linha de transação.',
+                'errors': {}
+            }, status=400)
+        
+        # Valida e processa cada linha
+        line_errors = []
+        for i in range(line_count):
+            value = request.POST.get(f'line_{i}_value')
+            transaction_type = request.POST.get(f'line_{i}_transaction_type')
+            is_transfer = request.POST.get(f'line_{i}_is_transfer') == 'on'
+            line_type = 'transfer' if is_transfer else 'normal'
+            category_id = request.POST.get(f'line_{i}_category')
+            destination_account_id = request.POST.get(f'line_{i}_destination_account')
+            description = request.POST.get(f'line_{i}_description', '')
+            
+            # Valida valor
+            try:
+                value = float(value) if value else None
+                if value is None or value <= 0:
+                    line_errors.append(f'Linha {i+1}: Valor deve ser maior que zero.')
+                    continue
+            except (ValueError, TypeError):
+                line_errors.append(f'Linha {i+1}: Valor inválido.')
+                continue
+            
+            # Para transferências, sempre força DB
+            if line_type == 'transfer':
+                transaction_type = 'DB'
+            
+            # Valida tipo de transação
+            if transaction_type not in ['CR', 'DB']:
+                line_errors.append(f'Linha {i+1}: Tipo de transação inválido.')
+                continue
+            
+            # Validação específica por tipo de linha
+            if line_type == 'transfer':
+                if not destination_account_id:
+                    line_errors.append(f'Linha {i+1}: Conta de destino é obrigatória para transferências.')
+                    continue
+                try:
+                    destination_account = Account.objects.get(id=destination_account_id)
+                    if destination_account == account:
+                        line_errors.append(f'Linha {i+1}: A conta de destino deve ser diferente da conta principal.')
+                        continue
+                except Account.DoesNotExist:
+                    line_errors.append(f'Linha {i+1}: Conta de destino inválida.')
+                    continue
+                category = None
+            else:
+                if not category_id:
+                    line_errors.append(f'Linha {i+1}: Categoria é obrigatória para transações normais.')
+                    continue
+                try:
+                    category = Category.objects.get(id=category_id)
+                except Category.DoesNotExist:
+                    line_errors.append(f'Linha {i+1}: Categoria inválida.')
+                    continue
+                destination_account = None
+            
+            lines.append({
+                'value': value,
+                'transaction_type': transaction_type,
+                'line_type': line_type,
+                'category': category,
+                'destination_account': destination_account,
+                'description': description,
+            })
+        
+        if line_errors:
+            from django.http import JsonResponse
+            return JsonResponse({
+                'success': False,
+                'message': 'Erros de validação nas linhas.',
+                'errors': {'lines': line_errors}
+            }, status=400)
+        
+        # Deleta todas as transações antigas (pai e filhas)
+        # Primeiro deleta as filhas para evitar problemas de CASCADE
+        for child in child_transactions:
+            # Deleta também transações de crédito de transferências
+            if child.operation_type == 'transfer' and child.destination_account:
+                Transaction.objects.filter(
+                    account=child.destination_account,
+                    destination_account=transaction.account,
+                    operation_type='transfer',
+                    transaction_type='CR',
+                    buy_date=transaction.buy_date
+                ).delete()
+            child.delete()
+        
+        # Cria novas transações seguindo a mesma lógica do create
+        new_parent_transaction = None
+        transaction_count = 0
+        
+        for i, line in enumerate(lines):
+            # Determina operation_type baseado no tipo de linha
+            if line['line_type'] == 'transfer':
+                operation_type = 'transfer'
+                line_transaction_type = 'DB'
+            else:
+                operation_type = 'simple'
+                line_transaction_type = line['transaction_type']
+            
+            # Prepara campos de recorrência ANTES de criar a transação
+            recurrence_fields = {}
+            if transaction.is_recurring:
+                recurrence_fields = {
+                    'is_recurring': True,
+                    'recurrence_type': transaction.recurrence_type,
+                    'recurrence_interval': transaction.recurrence_interval,
+                    'recurrence_start_date': transaction.recurrence_start_date,
+                    'recurrence_end_type': transaction.recurrence_end_type,
+                    'recurrence_end_count': transaction.recurrence_end_count,
+                    'recurrence_sequence': transaction.recurrence_sequence,
+                    'recurrence_interrupted': transaction.recurrence_interrupted,
+                }
+                # Preserva parent_type e parent_transaction da recorrência se for parcela filha
+                if transaction.parent_type == 'recurring' and transaction.parent_transaction:
+                    recurrence_fields['parent_type'] = 'recurring'
+                    recurrence_fields['parent_transaction'] = transaction.parent_transaction
+            
+            # Cria a transação principal com todos os campos de recorrência já definidos
+            # Para a primeira transação (pai), cria SEM pay_date primeiro para evitar geração prematura
+            # O pay_date será atualizado depois que todas as filhas compostas forem criadas
+            create_pay_date = None if i == 0 else pay_date  # Primeira linha (pai) sem pay_date inicialmente
+            create_status = 'pendente' if i == 0 else status  # Primeira linha (pai) pendente inicialmente
+            
+            new_transaction = Transaction.objects.create(
+                account=account,
+                destination_account=line['destination_account'],
+                transaction_type=line_transaction_type,
+                operation_type=operation_type,
+                value=Decimal(str(line['value'])),
+                category=line['category'],
+                description=line['description'],
+                buy_date=transaction.buy_date,
+                due_date=transaction.due_date,
+                pay_date=create_pay_date,
+                status=create_status,
+                beneficiary=beneficiary if i == 0 else None,  # Beneficiário apenas na primeira linha (pai)
+                **recurrence_fields  # Inclui todos os campos de recorrência
+            )
+            
+            # Primeira transação é a pai, demais são filhas
+            if transaction_count == 0:
+                new_parent_transaction = new_transaction
+            else:
+                new_transaction.parent_transaction = new_parent_transaction
+                new_transaction.parent_type = 'composite'
+                new_transaction.save()
+            
+            transaction_count += 1
+            
+            # Se for transferência, cria também a transação de crédito na conta de destino
+            if line['line_type'] == 'transfer' and line['destination_account']:
+                destination_account = line['destination_account']
+                credit_description = line['description'] or f'Transferência de {account.name}'
+                
+                credit_transaction = Transaction.objects.create(
+                    account=destination_account,
+                    destination_account=account,
+                    transaction_type='CR',
+                    operation_type='transfer',
+                    value=Decimal(str(line['value'])),
+                    category=None,
+                    description=credit_description,
+                    buy_date=transaction.buy_date,
+                    due_date=transaction.due_date,
+                    pay_date=pay_date,
+                    status=status,
+                    parent_transaction=new_parent_transaction,
+                    parent_type='composite'
+                )
+                transaction_count += 1
+        
+        # Deleta a transação pai antiga ANTES de atualizar pay_date
+        # Isso evita conflitos na estrutura de recorrência
+        old_transaction_id = transaction.id
+        transaction.delete()
+        
+        # Agora atualiza pay_date e status da transação pai usando update() para evitar chamar save()
+        # Isso evita que o método save() tente gerar próxima parcela antes de todas as filhas estarem prontas
+        if pay_date:
+            Transaction.objects.filter(id=new_parent_transaction.id).update(
+                pay_date=pay_date,
+                status='registrado'
+            )
+            # Recarrega a transação do banco para ter os valores atualizados
+            new_parent_transaction.refresh_from_db()
+        
+        # Se a transação é recorrente e tem pay_date, verifica se precisa gerar próxima parcela
+        # Isso só acontece após todas as filhas compostas serem criadas e a transação antiga deletada
+        if new_parent_transaction.is_recurring and pay_date:
+            # Verifica se já existe próxima parcela gerada
+            existing_next = new_parent_transaction.child_transactions.filter(
+                parent_type='recurring'
+            ).first()
+            
+            # Gera próxima parcela se não existe e pode gerar
+            if not existing_next and new_parent_transaction.can_generate_next():
+                if new_parent_transaction.is_composite_recurring():
+                    new_parent_transaction.generate_next_composite_installment()
+                else:
+                    new_parent_transaction.generate_next_installment()
+        
+        # Sempre retorna JSON para facilitar o tratamento no frontend
+        from django.http import JsonResponse
+        return JsonResponse({
+            'success': True,
+            'message': 'Transação composta registrada com sucesso!',
+            'status': new_parent_transaction.get_status_display(),
+        })
+    else:
+        # GET - prepara dados para exibição
+        # Preenche o formulário com os dados existentes
+        lines_data = []
+        
+        # Processa transações filhas diretas (não são transferências de crédito)
+        for child in child_transactions:
+            # Ignora transações de crédito de transferências (serão processadas junto com a débito)
+            if child.operation_type == 'transfer' and child.transaction_type == 'CR':
+                continue
+            
+            # Determina o tipo de linha
+            if child.operation_type == 'transfer':
+                line_type = 'transfer'
+            else:
+                line_type = 'normal'
+            
+            lines_data.append({
+                'value': float(child.value),
+                'transaction_type': child.transaction_type,
+                'line_type': line_type,
+                'category': child.category,
+                'destination_account': child.destination_account,
+                'description': child.description or '',
+            })
+        
+        # Adiciona a transação pai como primeira linha
+        if transaction.operation_type == 'transfer':
+            line_type = 'transfer'
+        else:
+            line_type = 'normal'
+        
+        parent_line = {
+            'value': float(transaction.value),
+            'transaction_type': transaction.transaction_type,
+            'line_type': line_type,
+            'category': transaction.category,
+            'destination_account': transaction.destination_account,
+            'description': transaction.description or '',
+        }
+        lines_data.insert(0, parent_line)
+        
+        # Serializa os dados para JSON (converte objetos para IDs)
+        lines_data_json = []
+        for line in lines_data:
+            lines_data_json.append({
+                'value': line['value'],
+                'transaction_type': line['transaction_type'],
+                'line_type': line['line_type'],
+                'category_id': line['category'].id if line['category'] else None,
+                'destination_account_id': line['destination_account'].id if line['destination_account'] else None,
+                'description': line['description'],
+            })
+        
+        # Pré-preenche pay_date com due_date se não estiver preenchido
+        initial_pay_date = None
+        if transaction.due_date and not transaction.pay_date:
+            initial_pay_date = transaction.due_date
+        elif transaction.pay_date:
+            initial_pay_date = transaction.pay_date
+        
+        # Prepara dados para o template
+        categories = Category.objects.all().order_by('category', 'subcategory')
+        accounts = Account.objects.filter(is_closed=False).order_by('name')
+        beneficiaries = Beneficiary.objects.all().order_by('full_name')
+        
+        context = {
+            'transaction': transaction,
+            'account': transaction.account,
+            'beneficiary': transaction.beneficiary,
+            'pay_date': initial_pay_date,
+            'lines_data_json': json.dumps(lines_data_json, ensure_ascii=False),
+            'categories': categories,
+            'accounts': accounts,
+            'beneficiaries': beneficiaries,
+        }
+        
+        return render(request, 'finance/composite_transaction_register_modal.html', context)
 

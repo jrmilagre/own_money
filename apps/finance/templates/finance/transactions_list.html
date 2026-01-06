@@ -65,10 +65,29 @@
                     {% comment %}Transação composta pai{% endcomment %}
                     <tr>
                         <td>{{ transaction.id }}</td>
-                        <td>{{ transaction.buy_date|date:"d/m/Y" }}</td>
+                        <td>{{ transaction.due_date|date:"d/m/Y"|default:transaction.buy_date|date:"d/m/Y" }}</td>
                         <td>
                             {{ transaction.description|default:"-" }}
                             <span style="font-size: 0.8em; color: #28a745;">📋 Composta</span>
+                            {% if transaction.is_recurring %}
+                                <span style="font-size: 0.8em; color: #28a745;">
+                                    🔄 Recorrente
+                                    {% if transaction.recurrence_end_type == 'after_count' %}
+                                        ({{ transaction.get_current_installment }}/{{ transaction.get_total_installments }})
+                                    {% else %}
+                                        ({{ transaction.get_current_installment }})
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                            {% if transaction.is_recurring %}
+                                {% with parent=transaction.get_recurring_parent %}
+                                    {% if parent.recurrence_interrupted %}
+                                        <span style="font-size: 0.8em; color: #ff9800; margin-left: 5px;">
+                                            ⏸️ Interrompida
+                                        </span>
+                                    {% endif %}
+                                {% endwith %}
+                            {% endif %}
                         </td>
                         <td>{{ transaction.account.name }}</td>
                         <td>{{ transaction.category.category|default:"-" }}</td>
@@ -81,6 +100,22 @@
                         <td>{{ transaction.get_status_display }}</td>
                         <td>
                             <a href="{% url 'finance:composite_transaction_update' transaction.id %}">Editar</a> |
+                            {% if not transaction.pay_date %}
+                                <a href="{% url 'finance:composite_transaction_register' transaction.id %}" 
+                                   class="register-btn" 
+                                   style="color: #28a745;"
+                                   data-transaction-id="{{ transaction.id }}">Registrar</a> |
+                            {% endif %}
+                            {% if transaction.is_recurring %}
+                                {% with parent=transaction.get_recurring_parent %}
+                                    {% if parent.recurrence_end_type == 'never' and not parent.recurrence_interrupted and transaction.parent_type == 'recurring' and not transaction.pay_date %}
+                                        <a href="{% url 'finance:composite_transaction_skip' transaction.id %}" style="color: #ffc107;">Saltar</a> |
+                                    {% endif %}
+                                    {% if parent.recurrence_end_type == 'never' and not parent.recurrence_interrupted and transaction.is_next_pending_installment %}
+                                        <a href="{% url 'finance:recurring_transaction_interrupt' transaction.id %}" style="color: #ff9800;">Interromper Recorrência</a> |
+                                    {% endif %}
+                                {% endwith %}
+                            {% endif %}
                             <a href="{% url 'finance:composite_transaction_delete' transaction.id %}">Deletar</a>
                         </td>
                     </tr>

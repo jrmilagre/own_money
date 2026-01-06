@@ -644,6 +644,106 @@ class Transaction(BaseModel):
         
         return next_transaction
     
+    def is_composite_recurring(self):
+        """Verifica se esta transação é uma transação composta recorrente."""
+        # É composta recorrente se é recorrente e tem filhas com parent_type='composite'
+        return self.is_recurring and self.is_composite_parent()
+    
+    def generate_next_composite_installment(self):
+        """Gera a próxima parcela de uma transação composta recorrente."""
+        if not self.is_composite_recurring():
+            return None
+        
+        if not self.can_generate_next():
+            return None
+        
+        parent = self.get_recurring_parent()
+        next_due_date = self.get_next_due_date()
+        
+        if not next_due_date:
+            return None
+        
+        current_sequence = self.get_current_installment()
+        next_sequence = current_sequence + 1
+        
+        # Obtém descrição base do parent
+        base_description = parent.get_base_description()
+        total = self.get_total_installments()
+        
+        # Monta descrição com número da parcela
+        if total:
+            next_description = f"{base_description} - {next_sequence:02d}/{total:02d}"
+        else:
+            next_description = f"{base_description} - {next_sequence}"
+        
+        # Obtém todas as linhas da transação composta atual
+        # Pai + filhas com parent_type='composite'
+        composite_children = self.child_transactions.filter(
+            parent_type='composite'
+        ).order_by('id')
+        
+        # Cria nova transação pai
+        new_parent = Transaction.objects.create(
+            parent_transaction=self,
+            parent_type='recurring',
+            is_recurring=True,
+            recurrence_type=parent.recurrence_type,
+            recurrence_interval=parent.recurrence_interval,
+            recurrence_start_date=parent.recurrence_start_date,
+            recurrence_end_type=parent.recurrence_end_type,
+            recurrence_end_count=parent.recurrence_end_count,
+            recurrence_sequence=next_sequence,
+            account=self.account,
+            transaction_type=self.transaction_type,
+            operation_type=self.operation_type,
+            value=self.value,
+            buy_date=self.buy_date,
+            due_date=next_due_date,
+            pay_date=None,
+            status='pendente',
+            description=next_description,
+        )
+        
+        # Copia todas as linhas filhas (normais e transferências)
+        for child in composite_children:
+            # Cria nova linha filha
+            new_child = Transaction.objects.create(
+                parent_transaction=new_parent,
+                parent_type='composite',
+                account=child.account,
+                destination_account=child.destination_account,
+                transaction_type=child.transaction_type,
+                operation_type=child.operation_type,
+                value=child.value,
+                category=child.category,
+                description=child.description,
+                buy_date=self.buy_date,
+                due_date=next_due_date,
+                pay_date=None,
+                status='pendente',
+            )
+            
+            # Se for transferência, cria também a transação de crédito na conta de destino
+            if child.operation_type == 'transfer' and child.destination_account:
+                credit_description = child.description or f'Transferência de {self.account.name}'
+                Transaction.objects.create(
+                    account=child.destination_account,
+                    destination_account=self.account,
+                    transaction_type='CR',
+                    operation_type='transfer',
+                    value=child.value,
+                    category=None,
+                    description=credit_description,
+                    buy_date=self.buy_date,
+                    due_date=next_due_date,
+                    pay_date=None,
+                    status='pendente',
+                    parent_transaction=new_parent,
+                    parent_type='composite'
+                )
+        
+        return new_parent
+    
     def save(self, *args, **kwargs):
         # Define status automaticamente baseado em pay_date
         old_pay_date = None
@@ -674,7 +774,11 @@ class Transaction(BaseModel):
             # 2. Pode gerar próxima (não está interrompida, não excedeu limite, etc)
             # 3. pay_date foi preenchido (seja pela primeira vez ou alterado)
             if not existing_next and self.can_generate_next():
-                self.generate_next_installment()
+                # Se é transação composta recorrente, usa método específico
+                if self.is_composite_recurring():
+                    self.generate_next_composite_installment()
+                else:
+                    self.generate_next_installment()
         
         # Atualiza descrição com número da parcela se necessário (apenas na primeira vez)
         # Evita atualizar se já foi atualizado ou se está sendo atualizado via update_fields

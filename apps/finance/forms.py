@@ -270,6 +270,69 @@ class CompositeTransactionForm(forms.Form):
         return cleaned_data
 
 
+class RecurringCompositeTransactionForm(CompositeTransactionForm):
+    """Formulário para transações compostas recorrentes."""
+    
+    is_recurring = forms.BooleanField(
+        label='É recorrente',
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+    recurrence_type = forms.ChoiceField(
+        label='Tipo de recorrência',
+        choices=Transaction.RECURRENCE_TYPE_CHOICES,
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    recurrence_interval = forms.IntegerField(
+        label='Intervalo entre recorrências',
+        min_value=1,
+        initial=1,
+        help_text='Ex: 2 para quinzenal (weekly), 6 para semestral (monthly), 2 para bienal (yearly)',
+        widget=forms.NumberInput(attrs={'class': 'form-control'})
+    )
+    recurrence_start_date = forms.DateField(
+        label='Data da primeira parcela (vencimento)',
+        required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+    )
+    recurrence_end_type = forms.ChoiceField(
+        label='Como a recorrência termina',
+        choices=Transaction.RECURRENCE_END_TYPE_CHOICES,
+        initial='never',
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    recurrence_end_count = forms.IntegerField(
+        label='Número de parcelas',
+        min_value=1,
+        required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control'})
+    )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # Valida campos de recorrência se is_recurring for True
+        is_recurring = cleaned_data.get('is_recurring', False)
+        if is_recurring:
+            recurrence_type = cleaned_data.get('recurrence_type')
+            recurrence_start_date = cleaned_data.get('recurrence_start_date')
+            recurrence_end_type = cleaned_data.get('recurrence_end_type', 'never')
+            recurrence_end_count = cleaned_data.get('recurrence_end_count')
+            
+            if not recurrence_type:
+                self.add_error('recurrence_type', 'Tipo de recorrência é obrigatório quando a transação é recorrente.')
+            
+            if not recurrence_start_date:
+                self.add_error('recurrence_start_date', 'Data da primeira parcela é obrigatória quando a transação é recorrente.')
+            
+            if recurrence_end_type == 'after_count' and not recurrence_end_count:
+                self.add_error('recurrence_end_count', 'Número de parcelas é obrigatório quando a recorrência termina após quantidade.')
+        
+        return cleaned_data
+
+
 class RecurringTransactionForm(TransactionForm):
     """Formulário para transações recorrentes."""
     

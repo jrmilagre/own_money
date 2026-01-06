@@ -1,0 +1,37 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}Saltar Parcela - Finanças{% endblock %}
+
+{% block content %}
+    <h1>Saltar Parcela</h1>
+    
+    <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+        <p><strong>Atenção!</strong> Esta ação irá:</p>
+        <ul>
+            <li>Deletar a parcela atual (pendente) e todas as suas transações compostas</li>
+            <li>Gerar automaticamente a próxima parcela na sequência</li>
+        </ul>
+        <p><strong>Informações da parcela que será saltada:</strong></p>
+        <ul>
+            <li><strong>Descrição:</strong> {{ transaction.description }}</li>
+            <li><strong>Parcela:</strong> {{ current_sequence }}</li>
+            <li><strong>Data de vencimento:</strong> {{ transaction.due_date|date:"d/m/Y"|default:"-" }}</li>
+            <li><strong>Valor:</strong> R$ {{ transaction.value|floatformat:2 }}</li>
+            <li><strong>Conta:</strong> {{ transaction.account.name }}</li>
+        </ul>
+        <p>Esta ação não pode ser desfeita.</p>
+    </div>
+    
+    <form method="post">
+        {% csrf_token %}
+        <div style="margin-top: 20px;">
+            <button type="submit" style="padding: 10px 20px; background-color: #ffc107; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                Confirmar e Saltar
+            </button>
+            <a href="{% url 'finance:transactions_list' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancelar
+            </a>
+        </div>
+    </form>
+{% endblock %}
+

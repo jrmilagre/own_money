@@ -1,0 +1,324 @@
+{% extends 'finance/base.html' %}
+
+{% block title %}{% if is_edit %}Editar{% else %}Nova{% endif %} Transação Composta - Finanças{% endblock %}
+
+{% block content %}
+    <h1>{% if is_edit %}Editar{% else %}Nova{% endif %} Transação Composta</h1>
+    
+    {% if messages %}
+    <div>
+        {% for message in messages %}
+        <div>{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <form method="post" id="compound-transaction-form">
+        {% csrf_token %}
+        
+        <h2 style="margin-top: 20px; margin-bottom: 15px;">Dados Compartilhados</h2>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.account.id_for_label }}">{{ form.account.label }}</label>
+            {{ form.account }}
+            {% if form.account.errors %}
+                <div style="color: red;">{{ form.account.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.beneficiary.id_for_label }}">{{ form.beneficiary.label }}</label>
+            {{ form.beneficiary }}
+            {% if form.beneficiary.errors %}
+                <div style="color: red;">{{ form.beneficiary.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+            {{ form.description }}
+            {% if form.description.errors %}
+                <div style="color: red;">{{ form.description.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.buy_date.id_for_label }}">{{ form.buy_date.label }}</label>
+            {{ form.buy_date }}
+            {% if form.buy_date.errors %}
+                <div style="color: red;">{{ form.buy_date.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.pay_date.id_for_label }}">{{ form.pay_date.label }}</label>
+            {{ form.pay_date }}
+            {% if form.pay_date.errors %}
+                <div style="color: red;">{{ form.pay_date.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="{{ form.net_amount.id_for_label }}">{{ form.net_amount.label }}</label>
+            {{ form.net_amount }}
+            {% if form.net_amount.help_text %}
+                <small style="display: block; color: #666; margin-top: 5px;">{{ form.net_amount.help_text }}</small>
+            {% endif %}
+            {% if form.net_amount.errors %}
+                <div style="color: red;">{{ form.net_amount.errors }}</div>
+            {% endif %}
+        </div>
+        
+        {% if form.non_field_errors %}
+            {% for error in form.non_field_errors %}
+                <div style="color: red; margin-bottom: 15px;">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+        
+        <h2 style="margin-top: 30px; margin-bottom: 15px;">Linhas de Transação</h2>
+        
+        <div id="balance-display" style="margin-bottom: 15px; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">
+            <strong>Saldo Calculado:</strong> <span id="balance-amount">R$ 0,00</span>
+            <span id="balance-status" style="margin-left: 10px;"></span>
+            <div id="net-amount-info" style="margin-top: 5px; font-size: 0.9em; color: #666;"></div>
+        </div>
+        
+        {{ formset.management_form }}
+        
+        <table id="transaction-lines" style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                <thead>
+                <tr style="background-color: #f8f9fa;">
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Categoria</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Tipo</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Valor</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Conta Destino</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Descrição</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for form in formset %}
+                <tr class="transaction-line">
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {{ form.category }}
+                        {% if form.category.errors %}
+                            <div style="color: red; font-size: 0.8em;">{{ form.category.errors }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {{ form.transaction_type }}
+                        {% if form.transaction_type.errors %}
+                            <div style="color: red; font-size: 0.8em;">{{ form.transaction_type.errors }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {{ form.value }}
+                        {% if form.value.errors %}
+                            <div style="color: red; font-size: 0.8em;">{{ form.value.errors }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {{ form.destination_account }}
+                        {% if form.destination_account.help_text %}
+                            <small style="display: block; color: #666; font-size: 0.8em;">{{ form.destination_account.help_text }}</small>
+                        {% endif %}
+                        {% if form.destination_account.errors %}
+                            <div style="color: red; font-size: 0.8em;">{{ form.destination_account.errors }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">
+                        {{ form.description }}
+                        {% if form.description.errors %}
+                            <div style="color: red; font-size: 0.8em;">{{ form.description.errors }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                        <button type="button" class="remove-line" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Remover</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <div style="margin-bottom: 20px;">
+            <button type="button" id="add-line" style="padding: 10px 20px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Adicionar Linha
+            </button>
+        </div>
+        
+        {% if formset.non_form_errors %}
+            {% for error in formset.non_form_errors %}
+                <div style="color: red; margin-bottom: 15px;">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+        
+        <div style="margin-top: 20px;">
+            <button type="submit" style="padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                {% if is_edit %}Atualizar{% else %}Criar{% endif %} Transação Composta
+            </button>
+            {% if is_edit %}
+            <a href="{% url 'finance:transactions_list' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancelar
+            </a>
+            {% else %}
+            <a href="{% url 'finance:transaction_type_select' %}" style="margin-left: 10px; padding: 10px 20px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancelar
+            </a>
+            {% endif %}
+        </div>
+    </form>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const formset = document.getElementById('transaction-lines');
+            const addButton = document.getElementById('add-line');
+            const totalForms = document.getElementById('id_form-TOTAL_FORMS');
+            let formCount = parseInt(totalForms.value);
+            
+            // Função para calcular e exibir o saldo e valor líquido
+            function updateBalance() {
+                let totalCredits = 0;
+                let totalDebits = 0;
+                let totalTransfers = 0;
+                
+                const lines = formset.querySelectorAll('.transaction-line');
+                lines.forEach(function(line) {
+                    const typeSelect = line.querySelector('select[name$="-transaction_type"]');
+                    const valueInput = line.querySelector('input[name$="-value"]');
+                    const destinationSelect = line.querySelector('select[name$="-destination_account"]');
+                    
+                    if (typeSelect && valueInput && valueInput.value) {
+                        const value = parseFloat(valueInput.value) || 0;
+                        // Se tem conta de destino, é uma transferência
+                        if (destinationSelect && destinationSelect.value) {
+                            totalTransfers += value;
+                        } else {
+                            if (typeSelect.value === 'CR') {
+                                totalCredits += value;
+                            } else if (typeSelect.value === 'DB') {
+                                totalDebits += value;
+                            }
+                        }
+                    }
+                });
+                
+                // Calcula o valor líquido (créditos - débitos - transferências)
+                const netAmount = totalCredits - totalDebits - totalTransfers;
+                
+                const balanceAmount = document.getElementById('balance-amount');
+                const balanceStatus = document.getElementById('balance-status');
+                const netAmountInfo = document.getElementById('net-amount-info');
+                const netAmountInput = document.getElementById('id_net_amount');
+                
+                // Atualiza o campo de valor líquido (readonly)
+                if (netAmountInput) {
+                    netAmountInput.value = netAmount.toFixed(2);
+                }
+                
+                balanceAmount.textContent = 'R$ ' + netAmount.toFixed(2).replace('.', ',');
+                
+                // Sempre mostra como válido, pois o cálculo é automático
+                balanceAmount.style.color = '#28a745';
+                balanceStatus.textContent = '✓ Calculado automaticamente';
+                balanceStatus.style.color = '#28a745';
+                
+                let infoText = `Créditos: R$ ${totalCredits.toFixed(2).replace('.', ',')} | Débitos: R$ ${totalDebits.toFixed(2).replace('.', ',')}`;
+                if (totalTransfers > 0) {
+                    infoText += ` | Transferências: R$ ${totalTransfers.toFixed(2).replace('.', ',')}`;
+                }
+                netAmountInfo.textContent = infoText;
+                netAmountInfo.style.color = '#666';
+            }
+            
+            // Adiciona linha
+            addButton.addEventListener('click', function() {
+                const firstRow = formset.querySelector('tbody').querySelector('.transaction-line');
+                if (!firstRow) return;
+                
+                const newRow = firstRow.cloneNode(true);
+                const inputs = newRow.querySelectorAll('input, select');
+                
+                inputs.forEach(function(input) {
+                    const name = input.name;
+                    if (name) {
+                        // Substitui o índice do formset
+                        const regex = /form-(\d+)-/;
+                        input.name = name.replace(regex, 'form-' + formCount + '-');
+                        if (input.id) {
+                            input.id = input.id.replace(regex, 'form-' + formCount + '-');
+                        }
+                        // Limpa valores
+                        if (input.type === 'text' || input.type === 'number') {
+                            input.value = '';
+                        } else if (input.tagName === 'SELECT') {
+                            input.selectedIndex = 0;
+                        }
+                    }
+                });
+                
+                // Limpa erros
+                newRow.querySelectorAll('.errorlist').forEach(function(el) {
+                    el.remove();
+                });
+                
+                formset.querySelector('tbody').appendChild(newRow);
+                formCount++;
+                totalForms.value = formCount;
+                
+                // Adiciona listener para remover
+                newRow.querySelector('.remove-line').addEventListener('click', function() {
+                    if (formset.querySelectorAll('.transaction-line').length > 2) {
+                        newRow.remove();
+                        formCount--;
+                        totalForms.value = formCount;
+                        updateBalance();
+                    } else {
+                        alert('É necessário ter pelo menos 2 linhas de transação.');
+                    }
+                });
+                
+                // Adiciona listeners para atualizar saldo
+                const typeSelect = newRow.querySelector('select[name$="-transaction_type"]');
+                const valueInput = newRow.querySelector('input[name$="-value"]');
+                const destinationSelect = newRow.querySelector('select[name$="-destination_account"]');
+                if (typeSelect) typeSelect.addEventListener('change', updateBalance);
+                if (valueInput) valueInput.addEventListener('input', updateBalance);
+                if (destinationSelect) destinationSelect.addEventListener('change', updateBalance);
+                
+                updateBalance();
+            });
+            
+            // Remove linha
+            formset.querySelectorAll('.remove-line').forEach(function(button) {
+                button.addEventListener('click', function() {
+                    const lines = formset.querySelectorAll('.transaction-line');
+                    if (lines.length > 2) {
+                        button.closest('.transaction-line').remove();
+                        formCount--;
+                        totalForms.value = formCount;
+                        updateBalance();
+                    } else {
+                        alert('É necessário ter pelo menos 2 linhas de transação.');
+                    }
+                });
+            });
+            
+            // Atualiza saldo quando valores mudam
+            formset.querySelectorAll('select[name$="-transaction_type"]').forEach(function(select) {
+                select.addEventListener('change', updateBalance);
+            });
+            
+            formset.querySelectorAll('input[name$="-value"]').forEach(function(input) {
+                input.addEventListener('input', updateBalance);
+            });
+            
+            formset.querySelectorAll('select[name$="-destination_account"]').forEach(function(select) {
+                select.addEventListener('change', updateBalance);
+            });
+            
+            // Calcula saldo inicial
+            updateBalance();
+        });
+    </script>
+{% endblock %}
+

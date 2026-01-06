@@ -52,6 +52,69 @@
             </div>
         </div>
         
+        {% if form.is_recurring %}
+        <div style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+            <h2>Recorrência</h2>
+            
+            <div style="margin-bottom: 15px;">
+                <label for="{{ form.is_recurring.id_for_label }}">
+                    {{ form.is_recurring }}
+                    {{ form.is_recurring.label }}
+                </label>
+                {% if form.is_recurring.errors %}
+                    <div style="color: red;">{{ form.is_recurring.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div id="recurrence_fields" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+                <h3>Configurações de Recorrência</h3>
+                
+                <div style="margin-bottom: 15px;">
+                    <label for="{{ form.recurrence_type.id_for_label }}">{{ form.recurrence_type.label }}</label>
+                    {{ form.recurrence_type }}
+                    {% if form.recurrence_type.errors %}
+                        <div style="color: red;">{{ form.recurrence_type.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label for="{{ form.recurrence_interval.id_for_label }}">{{ form.recurrence_interval.label }}</label>
+                    {{ form.recurrence_interval }}
+                    {% if form.recurrence_interval.help_text %}
+                        <small>{{ form.recurrence_interval.help_text }}</small>
+                    {% endif %}
+                    {% if form.recurrence_interval.errors %}
+                        <div style="color: red;">{{ form.recurrence_interval.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label for="{{ form.recurrence_start_date.id_for_label }}">{{ form.recurrence_start_date.label }}</label>
+                    {{ form.recurrence_start_date }}
+                    {% if form.recurrence_start_date.errors %}
+                        <div style="color: red;">{{ form.recurrence_start_date.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label for="{{ form.recurrence_end_type.id_for_label }}">{{ form.recurrence_end_type.label }}</label>
+                    {{ form.recurrence_end_type }}
+                    {% if form.recurrence_end_type.errors %}
+                        <div style="color: red;">{{ form.recurrence_end_type.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <div id="recurrence_end_count_field" style="display: none; margin-bottom: 15px;">
+                    <label for="{{ form.recurrence_end_count.id_for_label }}">{{ form.recurrence_end_count.label }}</label>
+                    {{ form.recurrence_end_count }}
+                    {% if form.recurrence_end_count.errors %}
+                        <div style="color: red;">{{ form.recurrence_end_count.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
         <div style="margin-bottom: 20px;">
             <h2>Linhas de Transação</h2>
             <button type="button" id="add-line-btn" style="padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 15px;">
@@ -324,4 +387,54 @@
             calculateNetBalance();
         });
     </script>
+    
+    {% if form.is_recurring %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const isRecurringCheckbox = document.getElementById('{{ form.is_recurring.id_for_label }}');
+            const recurrenceFields = document.getElementById('recurrence_fields');
+            const recurrenceEndType = document.getElementById('{{ form.recurrence_end_type.id_for_label }}');
+            const recurrenceEndCountField = document.getElementById('recurrence_end_count_field');
+            
+            function toggleRecurrenceFields() {
+                if (isRecurringCheckbox && recurrenceFields) {
+                    if (isRecurringCheckbox.checked) {
+                        recurrenceFields.style.display = 'block';
+                    } else {
+                        recurrenceFields.style.display = 'none';
+                    }
+                }
+            }
+            
+            function toggleEndCountField() {
+                if (recurrenceEndType && recurrenceEndCountField) {
+                    if (recurrenceEndType.value === 'after_count') {
+                        recurrenceEndCountField.style.display = 'block';
+                        const endCountInput = document.getElementById('{{ form.recurrence_end_count.id_for_label }}');
+                        if (endCountInput) {
+                            endCountInput.required = true;
+                        }
+                    } else {
+                        recurrenceEndCountField.style.display = 'none';
+                        const endCountInput = document.getElementById('{{ form.recurrence_end_count.id_for_label }}');
+                        if (endCountInput) {
+                            endCountInput.required = false;
+                        }
+                    }
+                }
+            }
+            
+            // Inicializa estado
+            if (isRecurringCheckbox) {
+                toggleRecurrenceFields();
+                isRecurringCheckbox.addEventListener('change', toggleRecurrenceFields);
+            }
+            
+            if (recurrenceEndType) {
+                toggleEndCountField();
+                recurrenceEndType.addEventListener('change', toggleEndCountField);
+            }
+        });
+    </script>
+    {% endif %}
 {% endblock %}
